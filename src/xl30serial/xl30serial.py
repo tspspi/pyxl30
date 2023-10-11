@@ -1,12 +1,54 @@
 from scanningelectronmicroscope import ScanningElectronMicroscope
-from scanningelectronmicroscope import ScanningElectronMicroscope_ScanMode
+from scanningelectronmicroscope import ScanningElectronMicroscope_ScanMode, ScanningElectronMicroscope_ImageFilterMode
+from scanningelectronmicroscope import ScanningElectronMicroscope_NotConnectedException, ScanningElectronMicroscope_CommunicationError
 
 import atexit
 import serial
 import logging
 import struct
+import math
 
+# Decorators used in this file
 
+class onlyconnected:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            if args[0]._port is None:
+                args[0]._logger.error(f"Called {func} but microscope is not connected")
+                raise ScanningElectronMicroscope_NotConnectedException()
+            return func(*args, **kwargs)
+        return wrapper
+
+class tested:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapper
+
+class untested:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            args[0]._logger.warning(f"Calling untested function {func} / function with possibly known bugs")
+            return func(*args, **kwargs)
+        return wrapper
+class buggy:
+    def __init__(self, *args, **kwargs):
+        if 'bugs' in kwargs:
+            self._bugs = kwargs['bugs']
+        else:
+            self._bugs = "Unknown"
+        pass
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            args[0]._logger.warning(f"Calling function {func} with known bugs ({self._bugs})!")
+            return func(*args, **kwargs)
+        return wrapper
 
 class XL30(ScanningElectronMicroscope):
     pass
@@ -147,16 +189,13 @@ class XL30Serial(XL30):
             self._close()
         return True
 
+    @onlyconnected()
     def _msg_tx(
         self,
         opCode,
         payload = None,
         fill = None
     ):
-        if self._port is None:
-            self._logger.error("Tried to transmit message to disconnected microscope")
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         if (opCode < 0) or (opCode > 255):
             self._logger.error(f"Requested to transmit OpCode {opCode} out of range 0-255")
             raise ValueError("Command not transmitable")
@@ -192,14 +231,11 @@ class XL30Serial(XL30):
 
         return True
 
+    @onlyconnected()
     def _msg_rx(
         self,
         fmt = None
     ):
-        if self._port is None:
-            self._logger.error("Tried to read from non connected microscope")
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         msg = self._port.read(2)
         if msg == b'':
             # Timeout indicates no message has been received
@@ -289,15 +325,22 @@ class XL30Serial(XL30):
                         data.append(struct.unpack('f', msg[4 + idx*4 : 4 + (idx+1) * 4])[0])
                 msgp['data'] = data
         if isError:
-            if (int(msg[1]) - 5) != 4:
-                self._logger.error(f"Expected error code - but got {len(msg[1]) - 5} bytes instead of 4")
-                raise ScanningElectronMicroscope_CommunicationError(f"Expected error code - but got {len(msg[1]) - 5} bytes instead of 4")
+            if (int(msg[1]) - 5) < 4:
+                self._logger.error(f"Expected error code - but got {int(msg[1]) - 5} bytes instead of 4")
+                raise ScanningElectronMicroscope_CommunicationError(f"Expected error code - but got {int(msg[1]) - 5} bytes instead of 4")
             msgp['errorcode'] = int(msg[4]) + int(msg[5]) * 256 + int(msg[6]) * 65536 + int(msg[7]) * 16777216
 
         self._logger.debug(f"RX: {msgp}")
         return msgp
 
+    @onlyconnected()
     def _initialRequests(self):
+        # First clear serial buffer (short timeout)
+        self._port.timeout = 1
+        while self._port.read() != b'':
+            pass
+        self._port.timeout = 60
+
         # Requesting machine type and serial
         mid = self._get_id()
         self._machine_type = mid['type']
@@ -323,12 +366,10 @@ class XL30Serial(XL30):
         #   Check if we are in service mode
         #   Check which type of gun (Tungsten, FEG, LaB6, SFEG)
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_id(self):
         self._logger.debug("Requesting ID")
-
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
 
         self._msg_tx(0, fill = 4)
         resp = self._msg_rx(fmt = "i")
@@ -346,9 +387,9 @@ class XL30Serial(XL30):
             }
         else:
             self._logger.error(f"Unknown response to ID request: {resp}")
-            raise ScanningElectronMicroscope_CommunicationError("Unknown response to ID reqeuest: {resp}")
+            raise ScanningElectronMicroscope_CommunicationError(f"Unknown response to ID reqeuest: {resp}")
 
-    #@tested
+    @tested()
     def _get_hightension(self):
         if self._port is None:
             raise ScanningElectronMicroscope_NotConnectedException()
@@ -365,11 +406,9 @@ class XL30Serial(XL30):
         resp = self._msg_rx(fmt = "f")
         return resp['data'][0]
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_hightension(self, voltage):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         if ((voltage < 200) or (voltage > 30000)) and (voltage != 0):
             raise ValueError("High tension voltage has to be in range 200V-30kV")
 
@@ -399,11 +438,9 @@ class XL30Serial(XL30):
                 return False
             return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _vent(self, stop = False):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._logger.debug(f"Request venting (stop: {stop})")
 
         if not stop:
@@ -423,10 +460,9 @@ class XL30Serial(XL30):
             self._logger.info("Stop venting")
             return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _pump(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
         self._logger.debug("Request pumping")
 
         self._msg_tx(113, bytes([0, 0, 0, 0]))
@@ -437,10 +473,9 @@ class XL30Serial(XL30):
         self._logger.info("Pumping")
         return True
       
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_spotsize(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
         self._msg_tx(6, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
@@ -449,12 +484,11 @@ class XL30Serial(XL30):
         self._logger.info(f"Queried spot size {resp['data'][0]}")
         return resp['data'][0]
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_spotsize(self, spotsize):
         if (spotsize < 1.0) or (spotsize > 8.0):
             raise ValueError("Valid spotsizes (probe currents) in the range of 1.0 to 8.0")
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
         self._msg_tx(7, struct.pack("<f", float(spotsize)))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
@@ -464,11 +498,9 @@ class XL30Serial(XL30):
             self._logger.info(f"New spotsize {spotsize}")
             return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_magnification(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(12, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
@@ -477,10 +509,9 @@ class XL30Serial(XL30):
         self._logger.info(f"Queried magnification {resp['data'][0]}")
         return resp['data'][0]
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_magnification(self, magnification):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
         if (magnification < 20) or (magnification > 4e5):
             raise ValueError("Valid magnification values range from 20 to 400000")
 
@@ -493,11 +524,9 @@ class XL30Serial(XL30):
         self._logger.info(f"New magnification {magnification}")
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_detector(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(14, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
@@ -520,11 +549,12 @@ class XL30Serial(XL30):
         return r
 
     # Currently able to set CCD and BSE but not SE?!?!?
+    @untested()
+    @buggy(bugs="Currently not able to set SE detector")
+    @onlyconnected()
     def _set_detector(self, detectorId):
         if detectorId not in self._detectorIds:
             raise ValueError(f"Unknown detector {detectorId}")
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
 
         self._logger.info(f"Requesting change to detector {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
 
@@ -537,12 +567,11 @@ class XL30Serial(XL30):
         self._logger.info(f"New detector: {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_scanmode(self, mode):
         if not isinstance(mode, ScanningElectronMicroscope_ScanMode):
             raise ValueError("Scan mode has to be a ScanningElectronMicroscope_ScanMode")
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
 
         self._msg_tx(17, bytes([ mode.value, 0, 0, 0 ]))
         resp = self._msg_rx(fmt = "i")
@@ -552,11 +581,9 @@ class XL30Serial(XL30):
         self._logger.info(f"Scan mode set to {mode}")
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_scanmode(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(16, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
@@ -581,10 +608,9 @@ class XL30Serial(XL30):
         }
         return r
 
+    @onlyconnected()
+    @untested()
     def _make_photo(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(37)
         resp = self._msg_rx()
         if resp['error']:
@@ -594,13 +620,11 @@ class XL30Serial(XL30):
             self._logger.info("Stored photo")
             return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _write_tiff_image(self, fname, printmagnification = False, graphicsbitplane = False, databar = True, overwrite = False):
         # Note: This function requires an absolute path such as "C:\\TEMP\\PYIMAGE". This image can
         # then be fetched via SMB
-
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
 
         #if len(fname) > 8+4:
         #    raise ValueError("Microscope only supports 8 character filenames")
@@ -627,11 +651,9 @@ class XL30Serial(XL30):
         resp = self._msg_rx()
         return resp
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_contrast(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(48, fill = 4)
         res = self._msg_rx(fmt = "f")
         if res['error']:
@@ -640,10 +662,9 @@ class XL30Serial(XL30):
 
         return res['data'][0]
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_contrast(self, contrast):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
         if (contrast < 0) or (contrast > 100):
             raise ValueError("Contrast has to be in range 0 to 100")
 
@@ -656,11 +677,9 @@ class XL30Serial(XL30):
         self._logger.info(f"New contrast: {contrast}")
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _get_brightness(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(50, fill = 4)
         res = self._msg_rx(fmt = "f")
         if res['error']:
@@ -669,11 +688,9 @@ class XL30Serial(XL30):
 
         return res['data'][0]
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _set_brightness(self, brightness):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         if (brightness < 0) or (brightness > 100):
             raise ValueError("Brightness has to be in range 0 to 100")
 
@@ -686,11 +703,9 @@ class XL30Serial(XL30):
         self._logger.info(f"New brightness: {brightness}")
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _auto_contrastbrightness(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._msg_tx(53, fill = 4)
         res = self._msg_rx()
         if res['error']:
@@ -702,11 +717,9 @@ class XL30Serial(XL30):
         sleep(30)
         return True
 
-    #@tested
+    @tested()
+    @onlyconnected()
     def _auto_focus(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         #self._msg_tx(55, bytes([1,0,0,0]))
 
         # Set timeout to wait for autofocus to complete
@@ -723,22 +736,48 @@ class XL30Serial(XL30):
             self._logger.error("Auto focus did not execute")
             return False
         self._logger.info("Auto focus executed")
+
         return True
 
+    @onlyconnected()
+    @tested()
+    def _set_databar_text(self, newtext):
+        if len(newtext) > 39:
+            self._logger.error("User requested more than 40 characters in data bar")
+            raise ValueError("Can only show up to 40 characters in data bar")
 
+        txtbin = bytes([0,0,0,0]) + newtext.encode('ascii')
+        txtbin += bytes([0])
+        while len(txtbin) % 4 != 0:
+            txtbin += bytes([0])
 
+        self._msg_tx(101, txtbin)
+        resp = self._msg_rx()
+        if resp['error']:
+            self._logger.error("Failed to set databar text")
+            return False
 
+        self._logger.info(f"New databar text {newtext}")
+        return True
+
+    @onlyconnected()
+    @tested()
+    def _get_databar_text(self):
+        self._msg_tx(100, fill = 44)
+        resp = self._msg_rx()
+
+        txt = (resp['payload'][4:]).decode('ascii')
+        return txt
 
 
     # ===========
     # Positioning
     # ===========
 
-    #@tested
+    @tested()
+    @buggy(bugs="Will ask for confirmation on the device control PC")
+    @onlyconnected()
     def _stage_home(self):
-        if self._port is None:
-            raise ScanningElectronMicroscope_NotConnectedException()
-
         self._logger.info("Started homing")
 
         # Increase timeout to 2 min 30 secs + 15 secs grace timeout
@@ -757,6 +796,183 @@ class XL30Serial(XL30):
         self._logger.info("Homed stage")
         return True
 
+    @onlyconnected()
+    def _get_stage_position(self):
+        # Queries the stage position ...
+        self._msg_tx(190, fill = 20)
+        resp = self._msg_rx(fmt = "fffff")
+        if resp['error']:
+            self._logger.error("Failed to query stage position")
+            return None
+
+        self._logger.debug(f"Queried stage position: X:{resp['data'][0]}mm, Y:{resp['data'][1]}mm, Z:{resp['data'][2]}mm, Tilt:{resp['data'][3]}mm, Rot:{resp['data'][4]}mm")
+
+        return {
+            'x' : resp['data'][0],
+            'y' : resp['data'][1],
+            'z' : resp['data'][2],
+            'tilt' : resp['data'][3],
+            'rot' : resp['data'][4]
+        }
+
+    @onlyconnected()
+    @buggy(bugs = "Does not check boundaries! Ignores error when setting z position. Sets tilt before z position ...? Maybe implement here moving down before changing tilt ...")
+    def _set_stage_position(self, x = None, y = None, z = None, tilt = None, rot = None):
+        self._logger.debug(f"Starting move to x:{x}, y:{y}, z:{z}, tilt:{tilt}, rot:{rot}")
+        ox,oy,oz,otilt,orot = x,y,z,tilt,rot
+
+        # Get current position (required for some of the methods)
+        currentPosition = self._get_stage_position()
+
+        if (x is not None) or (y is not None):
+            if x is None:
+                x = currentPosition['x']
+            if y is None:
+                y = currentPosition['y']
+
+            # Execute Command 177 SetPosition (synchronous)
+            tout = self._port.timeout
+            self._port.timeout = 60
+            self._logger.debug(f"Moving to position x:{x} mm, y:{y} mm")
+            self._msg_tx(177, struct.pack("<ff", x, y))
+            rep = self._msg_rx(fmt = "ff")
+            self._port.timeout = tout
+            if rep['error']:
+                self._logger.error(f"Failed moving to x:{x}mm, y:{y}mm")
+                return False
+            self._logger.info(f"New position x:{x}mm, y:{y}mm")
+
+        if rot is not None:
+            # Execute Command 179 SetRotation (synchronous)
+            tout = self._port.timeout
+            self._port.timeout = 60
+            self._logger.debug(f"Moving to position rot:{rot} deg")
+            self._msg_tx(179, struct.pack("<f", rot))
+            rep = self._msg_rx(fmt = "f")
+            self._port.timeout = tout
+            if rep['error']:
+                self._logger.error(f"Failed to rotate to {rot} deg")
+                return False
+            self._logger.info(f"New rotation rot:{rot} deg")
+
+        if z is not None:
+            # Set z position ...
+            tout = self._port.timeout
+            self._port.timeout = 60
+            self._logger.debug(f"Moving to position z:{z} mm")
+            self._msg_tx(187, struct.pack("<f", z))
+            rep = self._msg_rx(fmt = "f")
+            self._port.timeout = tout
+            if rep['error']:
+                self._logger.error(f"Failed to set z position to {z} mm")
+                #return False
+            self._logger.info(f"New z position: {z} mm")
+
+        if tilt is not None:
+            # Set tilt
+            tout = self._port.timeout
+            self._port.timeout = 60
+            self._logger.debug(f"Moving to tilt {tilt} deg")
+            self._msg_tx(189, struct.pack("<f", tilt))
+            rep = self._msg_rx(fmt = "f")
+            if rep['error']:
+                self._logger.error(f"Failed to set tilt position to {tilt} mm")
+                return False
+            self._logger.info(f"New tilt position: {tilt} deg")
+
+        self._logger.info(f"New position set: x:{ox}, y:{oy}, z:{oz}, rot:{orot}, tilt: {otilt}")
+        return True
+
+    @onlyconnected()
+    @tested()
+    def _get_beamshift(self):
+        self._msg_tx(80, fill = 2*4)
+        resp = self._msg_rx(fmt = "ff")
+        if resp['error']:
+            self._logger.error("Failed to query beam shift")
+            return None
+        self._logger.debug(f"Queried beamshift x: {resp['data'][0]} mm, y: {resp['data'][1]} mm")
+        return {
+            'x' : resp['data'][0],
+            'y' : resp['data'][1]
+        }
+
+    @onlyconnected()
+    @buggy(bugs = "Currently not checking x and y bounds")
+    @tested()
+    def _set_beamshift(self, x = None, y = None):
+        if (x is None) and (y is None):
+            self._logger.debug("Not setting beam shift, no data supplied")
+            return True
+        if (x is None) or (y is None):
+            # First query shift so we can do a complete set
+            currentPos = self._get_beamshift()
+            if currentPos is None:
+                self._logger.debug("Failed to query current position, cannot set only single component")
+                return False
+            if x is None:
+                x = currentPos['x']
+            if y is None:
+                y = currentPos['y']
+
+        print(struct.pack('<ff', x, y))
+        self._msg_tx(81, struct.pack('<ff', x, y,))
+        resp = self._msg_rx(fmt = "ff")
+        if resp['error']:
+            self._logger.error("Failed to set beamshift")
+            return False
+
+        self._logger.info(f"New beamshift x={x}mm, y={y}mm")
+        return True
+
+
+
+
+    @onlyconnected()
+    @tested()
+    def _get_imagefilter_mode(self):
+        self._msg_tx(74, fill = 4)
+        res = self._msg_rx(fmt = 'i')
+        if res['error']:
+            self._logger.error("Failed to query filter mode")
+            return None
+
+        fmode = None
+        try:
+            fmode = ScanningElectronMicroscope_ImageFilterMode(res['data'][0])
+        except:
+            self._logger.error(f"Unknown image filter mode {res['data'][0]} reported")
+            return None
+
+        return {
+                'mode' : fmode,
+                'frames' : 2**int(res['data'][1])
+        }
+
+
+    @onlyconnected()
+    @buggy(bugs="Cannot set average with != 2 frames")
+    @untested()
+    def _set_imagefilter_mode(self, filtermode, frames):
+        # Note that setting average for frames != 2 currently does not work
+        if frames < 1:
+            raise ValueError("At least one frame has to be gathered")
+        if math.ceil(math.log10(frames)/math.log10(2)) != math.floor(math.log10(frames)/math.log10(2)):
+            raise ValueError("Frame count has to be a power of two")
+        if int(math.log10(frames)/math.log10(2)) > 255:
+            raise ValueError("Frame count exceedes 2**255")
+
+        if not isinstance(filtermode, ScanningElectronMicroscope_ImageFilterMode):
+            raise ValueError("Filter mode has to be a ScanningElectronMicroscope_ImageFilterMode instance")
+
+        self._msg_tx(75, bytes([filtermode.value, int(math.log10(frames) / math.log10(2)), 0, 0]))
+        rep = self._msg_rx(fmt = "i")
+        if rep['error']:
+            self._logger.error(f"Failed to set filter mode {filtermode} with {frames} frames")
+            return False
+        self._logger.info(f"New filtermode {filtermode} with {frames} frames")
+        return True
+
 
 
 if __name__ == "__main__":
@@ -768,15 +984,50 @@ if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)
 
     with XL30Serial("/dev/ttyU0", logger, debug = True) as xl:
+        #sleep(60)
         print(xl._get_id())
 
         #print(xl._stage_home())
 
-        #xl._set_hightension(3000)
-        #sleep(30)
+        ##xl._set_hightension(10000)
+        ##sleep(30)
         #xl._auto_contrastbrightness()
         #xl._auto_focus()
         #xl._write_tiff_image("C:\\XL\\USR\\SUPERVSR\\REM\\PYTST.TIF", overwrite = True)
         #sleep(10)
         ##xl._set_brightness(20)
         #xl._set_hightension(0)
+
+        #print(xl._get_beamshift())
+        #xl._set_beamshift(1e-3, 2e-3)
+        #print(xl._get_beamshift())
+        #xl._set_beamshift(0,0)
+
+        import numpy as np
+        n = 0
+        for ixpos, xpos in enumerate(np.linspace(-3000e-3, 3000e-3, 7)):
+            for iypos, ypos in enumerate(np.linspace(-1000e-3, 1000e-3, 100)):
+                fname = f"C:\\XL\\USR\\SUPERVSR\\REM\\PYT{n}.TIF"
+                xl._set_stage_position(x = xpos, y = ypos)
+                sleep(0.5)
+                xl._write_tiff_image(fname, overwrite = True)
+                print(fname)
+                n = n + 1
+
+        xl._set_hightension(0)
+
+        #xl._stage_home()
+        #xl._get_stage_position()
+        #xl._set_stage_position(x = 2, y = 2, z = 38)
+        #sleep(10)
+        #xl._set_stage_position(x = 0, y = 0, z = 39)
+        #sleep(10)
+        #xl._set_stage_position(x = -2, y = -2, z = 38)
+        #sleep(10)
+        #xl._set_stage_position(x = 0, y = 0, z = 39)
+        #xl._set_stage_position(x = 2, y = 2, z = 40, rot = 2, tilt = 2)
+        #sleep(10)
+        #xl._set_stage_position(x = 10, y = 10, z = 40, rot = 0, tilt = 0)
+        #sleep(10)
+        #xl._set_stage_position(x = 0, y = 0, z = 0, rot = 0, tilt = 0)
+        #xl._get_stage_position()

@@ -14,6 +14,12 @@ class ScanningElectronMicroscope_ScanMode(Enum):
         LINE_Y          = 3
         EXT_XY          = 1
 
+class ScanningElectronMicroscope_ImageFilterMode(Enum):
+        LIVE            = 0
+        AVERAGE         = 1
+        INTEGRATE       = 2
+        FREEZE          = 3
+
 class ScanningElectronMicroscope:
 
 
