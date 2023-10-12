@@ -1,2 +1,7 @@
 *.swp
 __pycache__
+testcode.py
+plot.py
+*.npz
+*.svg
+*.png
