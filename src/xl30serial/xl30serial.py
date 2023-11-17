@@ -1,6 +1,7 @@
 from scanningelectronmicroscope import ScanningElectronMicroscope
 from scanningelectronmicroscope import ScanningElectronMicroscope_ScanMode, ScanningElectronMicroscope_ImageFilterMode
 from scanningelectronmicroscope import ScanningElectronMicroscope_NotConnectedException, ScanningElectronMicroscope_CommunicationError
+from scanningelectronmicroscope import ScanningElectronMicroscope_SpecimenCurrentDetectorMode
 
 import atexit
 import serial
@@ -973,6 +974,62 @@ class XL30Serial(XL30):
         self._logger.info(f"New filtermode {filtermode} with {frames} frames")
         return True
 
+    @untested()
+    @onlyconnected()
+    def _get_specimen_current_detector_mode(self):
+        self._msg_tx(58, fill = 4)
+        rep = self._msg_rx(fmt = "i")
+        if rep['error']:
+            self._logger.error(f"Failed to query speciment current detector mode")
+            return None
+        mode = rep['data'][0]
+
+        knownModes = {
+            0 : ScanningElectronMicroscope_SpecimenCurrentDetectorMode.TOUCH_ALARM,
+            1 : ScanningElectronMicroscope_SpecimenCurrentDetectorMode.IMAGING,
+            2 : ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING
+        }
+
+        if mode in knownModes:
+            self._logger.debug(f"Queried speciment current detector mode {knownModes[mode]} (raw: {mode})")
+            return knownModes[mode]
+        else:
+            self._logger.error(f"Received unknown speciment current detector mode {mode}")
+            return None
+
+    @untested()
+    @onlyconnected()
+    def _set_specimen_current_detector_mode(self, mode):
+        if not isinstance(mode, ScanningElectronMicroscope_SpecimenCurrentDetectorMode):
+            raise ValueError("Mode has to be a ScanningElectronMicroscope_SpecimentCurrentDetectorMode, is {mode}")
+
+        knownModes = {
+            ScanningElectronMicroscope_SpecimenCurrentDetectorMode.TOUCH_ALARM : 0,
+            ScanningElectronMicroscope_SpecimenCurrentDetectorMode.IMAGING : 1,
+            ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING : 2
+        }
+
+        if mode not in knownModes:
+            raise ValueError("Unknown or unspported SCD mode {mode}")
+
+        md = knownModes[mode]
+
+        self._msg_tx(59, struct.pack("<i", md))
+        resp = self._msg_rx(fmt = "i")
+
+        return True
+
+    @untested()
+    @onlyconnected()
+    def _get_specimen_current(self):
+        # Note this only works in measure mode ...
+        self._msg_tx(60, fill = 4)
+        resp = self._msg_rx(fmt = "f")
+        if resp["error"]:
+            self._logger.error("Failed to query speciment current (errorcode: {resp['errorcode']})")
+            return None
+
+        return resp.data[0]
 
 
 if __name__ == "__main__":
@@ -986,6 +1043,12 @@ if __name__ == "__main__":
     with XL30Serial("/dev/ttyU0", logger, debug = True) as xl:
         #sleep(60)
         print(xl._get_id())
+
+        # ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING
+        xl._set_specimen_current_detector_mode(ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING)
+        print(f"Current SCD mode: {xl._get_specimen_current_detector_mode()}")
+
+        print(f"Measure current: {xl._get_specimen_current()}")
 
         #print(xl._stage_home())
 
@@ -1003,18 +1066,18 @@ if __name__ == "__main__":
         #print(xl._get_beamshift())
         #xl._set_beamshift(0,0)
 
-        import numpy as np
-        n = 0
-        for ixpos, xpos in enumerate(np.linspace(-3000e-3, 3000e-3, 7)):
-            for iypos, ypos in enumerate(np.linspace(-1000e-3, 1000e-3, 100)):
-                fname = f"C:\\XL\\USR\\SUPERVSR\\REM\\PYT{n}.TIF"
-                xl._set_stage_position(x = xpos, y = ypos)
-                sleep(0.5)
-                xl._write_tiff_image(fname, overwrite = True)
-                print(fname)
-                n = n + 1
+        ##import numpy as np
+        ##n = 0
+        ##for ixpos, xpos in enumerate(np.linspace(-3000e-3, 3000e-3, 7)):
+        ##    for iypos, ypos in enumerate(np.linspace(-1000e-3, 1000e-3, 100)):
+        ##        fname = f"C:\\XL\\USR\\SUPERVSR\\REM\\PYT{n}.TIF"
+        ##        xl._set_stage_position(x = xpos, y = ypos)
+        ##       sleep(0.5)
+        ##        xl._write_tiff_image(fname, overwrite = True)
+        ##        print(fname)
+        ##        n = n + 1
 
-        xl._set_hightension(0)
+        ##xl._set_hightension(0)
 
         #xl._stage_home()
         #xl._get_stage_position()
