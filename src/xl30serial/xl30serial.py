@@ -1014,7 +1014,7 @@ class XL30Serial(XL30):
 
         md = knownModes[mode]
 
-        self._msg_tx(59, struct.pack("<i", md))
+        self._msg_tx(59, bytes([md, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
 
         return True
