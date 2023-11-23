@@ -926,7 +926,116 @@ class XL30Serial(XL30):
         self._logger.info(f"New beamshift x={x}mm, y={y}mm")
         return True
 
+    @untested()
+    @onlyconnected()
+    def _get_area_or_dot_shift(self):
+        self._msg_tx(26, fill = 4)
+        res = self._msg_rx(fmt = 'f')
+        if res['error']:
+            self._logger.error("Failed to query SA/dot shift along X axis")
+            return None
+        xshift = res['data'][0]
 
+        self._msg_tx(28, fill = 4)
+        res = self._msg_rx(fmt = 'f')
+        if res['error']:
+            self._logger.error("Failed to query SA/dot shift along Y axis")
+            return None
+        yshift = res['data'][0]
+
+        return (xshift, yshift)
+
+    @untested()
+    @onlyconnected()
+    def _set_area_or_dot_shift(self, xshift = None, yshift = None):
+        if isinstance(xshift, list) or issinstance(xshift, tuple):
+            if (len(xshift) == 2) and (yshift is None):
+                yshift = xshift[1]
+                xshift = xshift[0]
+            else:
+                raise ValueError("xshift and yshift have to be specied as float or first argument has to be a 2-tuple or 2-list")
+
+        if xshift is not None:
+            xshift = float(xshift)
+            if (xshift < -100) or (xshift > 100):
+                raise ValueError("X shift has to be in range [-100...100%]")
+
+        if yshift is not None:
+            yshift = float(yshift)
+            if (yshift < -100) or (yshift > 100):
+                raise ValueError("Y shift has to be in range [-100...100%]")
+
+        if xshift is not None:
+            self._msg_tx(27, struct.pack("<f", xshift))
+            res = self._msg_rx(fmt = 'i')
+            if res['error']:
+                self._logger.error("Failed to set X shift")
+                return False
+
+        if yshift is not None:
+            self._msg_tx(29, struct.pack("<f", yshift))
+            res = self._msg_rx(fmt = 'i')
+            if res['error']:
+                self._logger.error("Failed to set Y shift")
+                return False
+
+        self._logger.info(f"Set X and Y shift to {xshift} and {yshift}")
+        return True
+
+    @onlyconnected()
+    @untested()
+    def _get_selected_area_size(self):
+        self._msg_tx(22, fill = 4)
+        res = self._msg_rx(fmt = 'f')
+        if res['error']:
+            self._logger.error("Failed to query X area size")
+            return None
+        xsize = res['data'][0]
+
+        self._msg_tx(24, fill = 4)
+        if res['error']:
+            self._logger.error("Failed to query Y area size")
+            return None
+        ysize = res['data'][0]
+
+        self._logger.debug(f"Queried selected area size: {xsize}%, {ysize}%")
+        return (xsize, ysize)
+
+    @onlyconnected()
+    @untested()
+    def _set_selected_area_size(self, sizex = None, sizey = None):
+        if sizex is not None:
+            if isinstance(sizex, tuple) or isinstance(sizex, list):
+                if len(sizex) == 2:
+                    sizey = sizex[1]
+                    sizex = sizex[0]
+                else:
+                    raise ValueError("Either supply two floats or a 2-list or 2-tuple as first argument")
+
+        if sizex is not None:
+            sizex = float(sizex)
+            if (sizex < 0) or (sizex > 100):
+                raise ValueError("SizeX is out of range from [0...100%] (requested {sizex})")
+        if sizey is not None:
+            sizey = float(sizey)
+            if (sizey < 0) or (sizey > 100):
+                raise ValueError("SizeY is out of range from [0...100%] (requested {sizey})")
+
+        self._msg_tx(23, struct.pack("<f", sizex))
+        r = self._msg_rx(fmt = 'i')
+        if r['error']:
+            self._logger.error("Failed to set selected area X")
+            return False
+
+        self._msg_tx(25, struct.pack("<f", sizey))
+        r = self._msg_rx(fmt = 'i')
+        if r['error']:
+            self._logger.error("Failed to set selected area Y")
+            return False
+
+        self._logger.info(f"Set selected area size to {sizex}, {sizey}")
+        return True
+        
 
 
     @onlyconnected()
@@ -997,7 +1106,7 @@ class XL30Serial(XL30):
             self._logger.error(f"Received unknown speciment current detector mode {mode}")
             return None
 
-    @untested()
+    @buggy(bugs="Does not work on our XL30 ESEM")
     @onlyconnected()
     def _set_specimen_current_detector_mode(self, mode):
         if not isinstance(mode, ScanningElectronMicroscope_SpecimenCurrentDetectorMode):
@@ -1019,17 +1128,53 @@ class XL30Serial(XL30):
 
         return True
 
-    @untested()
+    @buggy(bugs="Does not work on our XL30 ESEM")
     @onlyconnected()
     def _get_specimen_current(self):
         # Note this only works in measure mode ...
         self._msg_tx(60, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp["error"]:
-            self._logger.error("Failed to query speciment current (errorcode: {resp['errorcode']})")
+            self._logger.error(f"Failed to query speciment current (errorcode: {resp['errorcode']})")
             return None
 
-        return resp.data[0]
+        return resp["data"][0]
+
+    @untested()
+    @onlyconnected()
+    def _is_beam_blanked(self):
+        self._msg_tx(62, fill = 4)
+        resp = self._msg_rx(fmt = "i")
+        if resp["error"]:
+            self._logger.error(f"Failed to query beam blanking error code")
+            return None
+
+        if resp["data"][0] == 0:
+            return False
+        else:
+            return True
+
+    @untested()
+    @onlyconnected()
+    def _blank(self):
+        self._msg_tx(63, bytes([1, 0, 0, 0]))
+        resp = self._msg_rx(fmt = "i")
+        if resp["error"]:
+            self._logger.error("Failed to blank beam")
+            return False
+        return True
+
+    @untested()
+    @onlyconnected()
+    def _unblank(self):
+        self._msg_tx(63, bytes([0, 0, 0, 0]))
+        resp = self._msg_rx(fmt = "i")
+        if resp["error"]:
+            self._logger.error("Failed to unblank beam")
+            return False
+        return True
+
+
 
 
 if __name__ == "__main__":
@@ -1044,11 +1189,14 @@ if __name__ == "__main__":
         #sleep(60)
         print(xl._get_id())
 
-        # ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING
-        xl._set_specimen_current_detector_mode(ScanningElectronMicroscope_SpecimenCurrentDetectorMode.MEASURING)
-        print(f"Current SCD mode: {xl._get_specimen_current_detector_mode()}")
-
-        print(f"Measure current: {xl._get_specimen_current()}")
+        print(f"Currently blanked? {xl._is_beam_blanked()}")
+        sleep(1)
+        print("Blanking beam")
+        print(f"{xl._blank()}")
+        sleep(10)
+        print("Unblanking beam")
+        print(f"{xl._unblank()}")
+        
 
         #print(xl._stage_home())
 
