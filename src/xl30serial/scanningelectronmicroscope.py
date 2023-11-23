@@ -151,3 +151,40 @@ class ScanningElectronMicroscope:
     def _set_beamshift(self, x = None, y = None):
         raise NotImplementedError()
 
+
+
+    @abstractmethod
+    def _get_area_or_dot_shift(self):
+        raise NotImplementedError()
+    @abstractmethod
+    def _set_area_or_dot_shift(self, xshift = None, yshift = None):
+        raise NotImplementedError()
+    @abstractmethod
+    def _get_selected_area_size(self):
+        raise NotImplementedError()
+    @abstractmethod
+    def _set_selected_area_size(self, sizex = None, sizey = None):
+        raise NotImplementedError()
+
+
+
+    @abstractmethod
+    def _get_specimen_current_detector_mode(self):
+        raise NotImplementedError()
+    @abstractmethod
+    def _set_specimen_current_detector_mode(self, mode):
+        raise NotImplementedError()
+    @abstractmethod
+    def _get_specimen_current(self):
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def _is_beam_blanked(self):
+        raise NotImplementedError()
+    @abstractmethod
+    def _blank(self):
+        raise NotImplementedError()
+    @abstractmethod
+    def _unblank(self):
+        raise NotImplementedError()
