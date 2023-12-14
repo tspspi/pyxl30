@@ -286,5 +286,5 @@ class ScanningElectronMicroscope:
     def get_stigmator(self, stigmatorIndex = 0):
         return self._get_stigmator(stigmatorIndex)
     def set_stigmator(self, x = None, y = None, stigmatorIndex = 0):
-
+        return self._set_stigmator(x = x, y = y, stigmatorIndex = stigmatorIndex)
 
