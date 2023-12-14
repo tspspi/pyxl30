@@ -1,7 +1,7 @@
-from scanningelectronmicroscope import ScanningElectronMicroscope
-from scanningelectronmicroscope import ScanningElectronMicroscope_ScanMode, ScanningElectronMicroscope_ImageFilterMode
-from scanningelectronmicroscope import ScanningElectronMicroscope_NotConnectedException, ScanningElectronMicroscope_CommunicationError
-from scanningelectronmicroscope import ScanningElectronMicroscope_SpecimenCurrentDetectorMode
+from xl30serial.scanningelectronmicroscope import ScanningElectronMicroscope
+from xl30serial.scanningelectronmicroscope import ScanningElectronMicroscope_ScanMode, ScanningElectronMicroscope_ImageFilterMode
+from xl30serial.scanningelectronmicroscope import ScanningElectronMicroscope_NotConnectedException, ScanningElectronMicroscope_CommunicationError
+from xl30serial.scanningelectronmicroscope import ScanningElectronMicroscope_SpecimenCurrentDetectorMode
 
 import atexit
 import serial
@@ -525,6 +525,48 @@ class XL30Serial(XL30):
         self._logger.info(f"New magnification {magnification}")
         return True
 
+    @untested()
+    @onlyconnected()
+    def _get_stigmator(self, stigmatorindex = 0):
+        if stigmatorindex != 0:
+            raise ValueError("This device only offers a signle stigmator")
+
+        self._msg_tx(70, fill = 8)
+        resp = self._msg_rx(fmt = "ff")
+        if resp['error']:
+            self._logger.error(f"Failed to read stigmator setting")
+            return None, None
+
+        return (resp['data'][0], resp['data'][1])
+
+    @untested()
+    @onlyconnected()
+    def _set_stigmator(self, x = None, y = None, stigmatorindex = 0):
+        if stigmatorindex != 0:
+            raise ValueError("This device only offers a single stigmator")
+
+        if (x is None) and (y is None):
+            return True
+
+        if (x is None) or (y is None):
+            oldx, oldy = self._get_stigmator()
+            if oldx is None:
+                self._logger.error("Failed to query old stigmator setting")
+                return False
+            if x is None:
+                x = oldx
+            if y is None:
+                y = oldy
+
+        self._msg_tx(71, struct.pack("<ff", x, y))
+        resp = self._msg_rx(fmt = "ff")
+        if resp['error']:
+            self._logger.error(f"Failed to set stigmator setting to {x} and {y}")
+            return False
+
+        self._logger.info(f"New stigmator settings: {x}, {y}")
+        return True
+
     @tested()
     @onlyconnected()
     def _get_detector(self):
@@ -926,7 +968,7 @@ class XL30Serial(XL30):
         self._logger.info(f"New beamshift x={x}mm, y={y}mm")
         return True
 
-    @untested()
+    @tested()
     @onlyconnected()
     def _get_area_or_dot_shift(self):
         self._msg_tx(26, fill = 4)
@@ -945,10 +987,10 @@ class XL30Serial(XL30):
 
         return (xshift, yshift)
 
-    @untested()
+    @tested()
     @onlyconnected()
     def _set_area_or_dot_shift(self, xshift = None, yshift = None):
-        if isinstance(xshift, list) or issinstance(xshift, tuple):
+        if isinstance(xshift, list) or isinstance(xshift, tuple):
             if (len(xshift) == 2) and (yshift is None):
                 yshift = xshift[1]
                 xshift = xshift[0]

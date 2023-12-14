@@ -29,7 +29,11 @@ class ScanningElectronMicroscope:
     def __init__(
             self,
 
-            highTension = ( None, None )
+            highTension = ( None, None ),
+            spotSize = ( None, None),
+            magnification = ( None, None),
+            supportedScanModes = [],
+            stigmatorCount = None,
     ):
         if not isinstance(highTension, list) and not isinstance(highTension, tuple):
             raise ValueError("High tension range has to be a 2-list or 2-tuple")
@@ -38,7 +42,38 @@ class ScanningElectronMicroscope:
         if highTension[0] > highTension[1]:
             raise ValueError("High tension maximum has to be larger than high tension minimum")
 
+        if not isinstance(spotSize, list) and not isinstance(spotSize, tuple):
+            raise ValueError("Spot size range has to be a 2-list or 2-tuple")
+        if len(spotSize) != 2:
+            raise ValueError("Spot size range has to be a 2-list or 2-tuple")
+        if spotSize[0] > spotSize[1]:
+            raise ValueError("Spot size maxmium has to be larger or equal than spot size minimum")
+
+        if not isinstance(magnification, list) and not isinstance(magnification, tuple):
+            raise ValueError("Magnification range has to be a 2-list or 2-tuple")
+        if len(magnification) != 2:
+            raise ValueError("Magnification range has to be a 2-list or 2-tuple")
+        if magnification[0] > magnification[1]:
+            raise ValueError("Magnification maximum has to be larger or equal to minimum")
+
+        if not isinstance(supportedScanModes, list) and not isinstance(supportedScanModes, tuple):
+            raise ValueError("Supported scan modes has to be a list or tuple")
+        if len(supportedScanMode) < 1:
+            raise ValueError("At least one scan mode has to be supported")
+        for sm in supportedScanMode:
+            if not isinstance(sm, ScanningElectronMicroscope_ScanMode):
+                raise ValueError(f"Scan mode {sm} is not an ScanningElectronMicroscope_ScanMode")
+
+        if (stigmatorCount < 0) or (stigmatorCount is None):
+            raise ValueError("Stigmator count has to be 0 or a positive integer")
+        if int(stigmatorCount) != stigmatorCount:
+            raise ValueError("Stigmator count has to be an integer")
+
         self._p_highTensionRange = highTension
+        self._p_spotSizeRange = spotSize
+        self._p_magnificationRange = magnification
+        self._p_scanModes = supportedScanModes
+        self._p_stigmatorCount = stigmatorCount
 
     # Overriden abstract methods
     @abstractmethod
@@ -59,7 +94,7 @@ class ScanningElectronMicroscope:
     def _get_hightension(self):
         raise NotImplementedError()
     @abstractmethod
-    def _set_hightension(self):
+    def _set_hightension(self, ht):
         raise NotImplementedError()
 
     @abstractmethod
@@ -92,6 +127,11 @@ class ScanningElectronMicroscope:
         raise NotImplementedError()
     @abstractmethod
     def _set_scanmode(self, mode):
+        raise NotImplementedError()
+    @abstractmethod
+    def _get_stigmator(self, stigmatorindex = 0):
+        raise NotImplementedError()
+    def _set_stigmator(self, x = None, y = None, stigmatorindex = 0):
         raise NotImplementedError()
 
     @abstractmethod
@@ -188,3 +228,63 @@ class ScanningElectronMicroscope:
     @abstractmethod
     def _unblank(self):
         raise NotImplementedError()
+
+
+    # Exposed methods (public API)
+    def get_id():
+        return self._get_id()
+
+    def get_hightension(self):
+        return self._get_hightension()
+    def set_hightension(self, ht):
+        if (ht < self._p_highTensionRange[0]) and (ht != 0):
+            raise ValueError("High tension has to be set to minimum of {self._p_highTensionRange[0]} or 0")
+        if (ht > self._p_highTensionRange[1]):
+            raise ValueError("High tension can be set to a maximum of {self._p_highTensionRange[1]}")
+        return self._set_hightension(ht)
+
+    def vent(self, stop = False):
+        return self._vent(stop)
+    def pump(self):
+        return self._pump()
+
+    def get_spotsize(self):
+        return self._get_spotsize()
+    def set_spotsize(self, spotsize):
+        if spotsize < self._p_spotSizeRange[0]:
+            raise ValueError("Mimimum supported spot size is {self._p_spotSizeRange[0]}")
+        if spotsize > self._p_spotSizeRange[1]:
+            raise ValueError("Maximum supported spot size is {self._p_spotSizeRange[1]}")
+
+        return self._set_spotsize(spotsize)
+
+    def get_magnification(self):
+        return self._get_magnification()
+    def set_magnification(self, mag):
+        if mag < self._p_magnificationRange[0]:
+            raise ValueError("Minimum supported magnification is {self._p_magnificationRange[0]}")
+        if mag > self._p_magnificationRange[1]:
+            raise ValueError("Maximum supported magnification is {self._p_magnificationRange[1]}")
+        return self._set_magnification(mag)
+
+    def get_detector(self):
+        return self._get_detector()
+    def set_detector(self, detectorId):
+        # ToDo: Translate to generic detector type enum
+        return self._set_detector()
+
+    def get_scanmode(self):
+        return self._get_scanmode()
+    def set_scanmode(self, mode):
+        if not isinstance(mode, ScanningElectronMicroscope_ScanMode):
+            raise ValueError("Scan mode has to be one of the ScanningElectronMicroscope_ScanMode instances")
+        if mode not in self._p_scanModes:
+            raise ValueError(f"Mode {mode} not supported by this device")
+
+        return self._set_scanmode(mode)
+
+    def get_stigmator(self, stigmatorIndex = 0):
+        return self._get_stigmator(stigmatorIndex)
+    def set_stigmator(self, x = None, y = None, stigmatorIndex = 0):
+
+
