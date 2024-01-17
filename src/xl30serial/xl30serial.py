@@ -9,6 +9,8 @@ import logging
 import struct
 import math
 
+from time import sleep
+
 # Decorators used in this file
 
 class onlyconnected:
@@ -21,6 +23,39 @@ class onlyconnected:
                 raise ScanningElectronMicroscope_NotConnectedException()
             return func(*args, **kwargs)
         return wrapper
+
+class retrylooped:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            args[0]._retryCountState = args[0]._retryCount
+            args[0]._reconnectCountState = args[0]._reconnectCount
+
+            while True:
+                try:
+                    retValue = func(*args, **kwargs)
+                    return retValue
+                except Exception as e:
+                    # We have encountered an exception - if we retry we ignore it
+                    args[0]._logger.error(f"Encountered communicaiton error:\n{e}")
+                    if args[0]._retryCountState > 0:
+                        args[0]._logger.warning("Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
+                        # We can simply retry ...
+                        args[0]._retryCountState = args[0]._retryCountState - 1
+                        sleep(args[0]._retryDelay)
+                        continue
+                    else:
+                        # We have to reconnect if we have reconnections available
+                        if args[0]._reconnectCountState > 0:
+                            args[0]._logger.warning("Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
+                            args[0]._reconnect()
+                            args[0]._reconnectCountState = args[0]._reconnectCountState - 1
+                        else:
+                            self._logger.error(f"{args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
+                            raise
+        return wrapper
+
 
 class tested:
     def __init__(self, *args, **kwargs):
@@ -55,7 +90,16 @@ class XL30(ScanningElectronMicroscope):
     pass
 
 class XL30Serial(XL30):
-    def __init__(self, port, logger = None, debug = False, loglevel = "ERROR", detectorsAutodetect = False):
+    def __init__(self, port, logger = None, debug = False, loglevel = "ERROR", detectorsAutodetect = False, retryCount = 3, reconnectCount = 3, retryDelay = 5, reconnectDelay = 5):
+        self._retryCount = retryCount
+        self._reconnectCount = reconnectCount
+
+        self._retryCountState = retryCount
+        self._reconnectCountState = reconnectCount
+
+        self._retryDelay = retryDelay
+        self._reconnectDelay = reconnectDelay
+
         loglvls = {
             "DEBUG"     : logging.DEBUG,
             "INFO"      : logging.INFO,
@@ -174,7 +218,7 @@ class XL30Serial(XL30):
             self._port = serial.Serial(
                     self._portName,
                     baudrate = 9600,
-                    bytesize = serial.EIGHTBYTES,
+                    bytesize = serial.EIGHTBITS,
                     parity = serial.PARITY_NONE,
                     stopbits = serial.STOPBITS_ONE,
                     timeout = 60
@@ -189,6 +233,25 @@ class XL30Serial(XL30):
         if (self._port is not None):
             self._close()
         return True
+
+    def _reconnect(self):
+        self._logger.debug("Trying to reconenct")
+        if (self._port is not None):
+            try:
+                self._port.close()
+            except:
+                pass
+            self._port = None
+
+        # Short sleep
+        sleep(2)
+
+        # Reconnect
+        try:
+            self._connect()
+            return True
+        except:
+            return False
 
     @onlyconnected()
     def _msg_tx(
@@ -369,6 +432,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_id(self):
         self._logger.debug("Requesting ID")
 
@@ -391,6 +455,7 @@ class XL30Serial(XL30):
             raise ScanningElectronMicroscope_CommunicationError(f"Unknown response to ID reqeuest: {resp}")
 
     @tested()
+    @retrylooped()
     def _get_hightension(self):
         if self._port is None:
             raise ScanningElectronMicroscope_NotConnectedException()
@@ -398,6 +463,7 @@ class XL30Serial(XL30):
         # First get status
         self._msg_tx(4, fill = 4)
         resp = self._msg_rx(fmt = "i")
+
         if resp['data'][0] == 0:
             self._logger.debug("High tension is currently disabled")
             return False
@@ -409,6 +475,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_hightension(self, voltage):
         if ((voltage < 200) or (voltage > 30000)) and (voltage != 0):
             raise ValueError("High tension voltage has to be in range 200V-30kV")
@@ -441,6 +508,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _vent(self, stop = False):
         self._logger.debug(f"Request venting (stop: {stop})")
 
@@ -463,6 +531,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _pump(self):
         self._logger.debug("Request pumping")
 
@@ -476,6 +545,7 @@ class XL30Serial(XL30):
       
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_spotsize(self):
         self._msg_tx(6, fill = 4)
         resp = self._msg_rx(fmt = "f")
@@ -487,6 +557,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_spotsize(self, spotsize):
         if (spotsize < 1.0) or (spotsize > 8.0):
             raise ValueError("Valid spotsizes (probe currents) in the range of 1.0 to 8.0")
@@ -501,6 +572,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_magnification(self):
         self._msg_tx(12, fill = 4)
         resp = self._msg_rx(fmt = "f")
@@ -512,6 +584,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_magnification(self, magnification):
         if (magnification < 20) or (magnification > 4e5):
             raise ValueError("Valid magnification values range from 20 to 400000")
@@ -527,6 +600,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _get_stigmator(self, stigmatorindex = 0):
         if stigmatorindex != 0:
             raise ValueError("This device only offers a signle stigmator")
@@ -541,6 +615,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _set_stigmator(self, x = None, y = None, stigmatorindex = 0):
         if stigmatorindex != 0:
             raise ValueError("This device only offers a single stigmator")
@@ -569,6 +644,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_detector(self):
         self._msg_tx(14, fill = 4)
         resp = self._msg_rx(fmt = "i")
@@ -595,6 +671,7 @@ class XL30Serial(XL30):
     @untested()
     @buggy(bugs="Currently not able to set SE detector")
     @onlyconnected()
+    @retrylooped()
     def _set_detector(self, detectorId):
         if detectorId not in self._detectorIds:
             raise ValueError(f"Unknown detector {detectorId}")
@@ -612,6 +689,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_scanmode(self, mode):
         if not isinstance(mode, ScanningElectronMicroscope_ScanMode):
             raise ValueError("Scan mode has to be a ScanningElectronMicroscope_ScanMode")
@@ -626,6 +704,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_scanmode(self):
         self._msg_tx(16, fill = 4)
         resp = self._msg_rx(fmt = "i")
@@ -653,6 +732,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @untested()
+    @retrylooped()
     def _make_photo(self):
         self._msg_tx(37)
         resp = self._msg_rx()
@@ -665,6 +745,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _write_tiff_image(self, fname, printmagnification = False, graphicsbitplane = False, databar = True, overwrite = False):
         # Note: This function requires an absolute path such as "C:\\TEMP\\PYIMAGE". This image can
         # then be fetched via SMB
@@ -696,6 +777,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_contrast(self):
         self._msg_tx(48, fill = 4)
         res = self._msg_rx(fmt = "f")
@@ -707,6 +789,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_contrast(self, contrast):
         if (contrast < 0) or (contrast > 100):
             raise ValueError("Contrast has to be in range 0 to 100")
@@ -722,6 +805,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_brightness(self):
         self._msg_tx(50, fill = 4)
         res = self._msg_rx(fmt = "f")
@@ -733,6 +817,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_brightness(self, brightness):
         if (brightness < 0) or (brightness > 100):
             raise ValueError("Brightness has to be in range 0 to 100")
@@ -748,6 +833,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _auto_contrastbrightness(self):
         self._msg_tx(53, fill = 4)
         res = self._msg_rx()
@@ -762,6 +848,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _auto_focus(self):
         #self._msg_tx(55, bytes([1,0,0,0]))
 
@@ -784,6 +871,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @tested()
+    @retrylooped()
     def _set_databar_text(self, newtext):
         if len(newtext) > 39:
             self._logger.error("User requested more than 40 characters in data bar")
@@ -805,6 +893,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @tested()
+    @retrylooped()
     def _get_databar_text(self):
         self._msg_tx(100, fill = 44)
         resp = self._msg_rx()
@@ -820,6 +909,7 @@ class XL30Serial(XL30):
     @tested()
     @buggy(bugs="Will ask for confirmation on the device control PC")
     @onlyconnected()
+    @retrylooped()
     def _stage_home(self):
         self._logger.info("Started homing")
 
@@ -840,6 +930,7 @@ class XL30Serial(XL30):
         return True
 
     @onlyconnected()
+    @retrylooped()
     def _get_stage_position(self):
         # Queries the stage position ...
         self._msg_tx(190, fill = 20)
@@ -860,6 +951,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @buggy(bugs = "Does not check boundaries! Ignores error when setting z position. Sets tilt before z position ...? Maybe implement here moving down before changing tilt ...")
+    @retrylooped()
     def _set_stage_position(self, x = None, y = None, z = None, tilt = None, rot = None):
         self._logger.debug(f"Starting move to x:{x}, y:{y}, z:{z}, tilt:{tilt}, rot:{rot}")
         ox,oy,oz,otilt,orot = x,y,z,tilt,rot
@@ -928,6 +1020,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @tested()
+    @retrylooped()
     def _get_beamshift(self):
         self._msg_tx(80, fill = 2*4)
         resp = self._msg_rx(fmt = "ff")
@@ -943,6 +1036,7 @@ class XL30Serial(XL30):
     @onlyconnected()
     @buggy(bugs = "Currently not checking x and y bounds")
     @tested()
+    @retrylooped()
     def _set_beamshift(self, x = None, y = None):
         if (x is None) and (y is None):
             self._logger.debug("Not setting beam shift, no data supplied")
@@ -970,6 +1064,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _get_area_or_dot_shift(self):
         self._msg_tx(26, fill = 4)
         res = self._msg_rx(fmt = 'f')
@@ -989,6 +1084,7 @@ class XL30Serial(XL30):
 
     @tested()
     @onlyconnected()
+    @retrylooped()
     def _set_area_or_dot_shift(self, xshift = None, yshift = None):
         if isinstance(xshift, list) or isinstance(xshift, tuple):
             if (len(xshift) == 2) and (yshift is None):
@@ -1026,6 +1122,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @untested()
+    @retrylooped()
     def _get_selected_area_size(self):
         self._msg_tx(22, fill = 4)
         res = self._msg_rx(fmt = 'f')
@@ -1045,6 +1142,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @untested()
+    @retrylooped()
     def _set_selected_area_size(self, sizex = None, sizey = None):
         if sizex is not None:
             if isinstance(sizex, tuple) or isinstance(sizex, list):
@@ -1082,6 +1180,7 @@ class XL30Serial(XL30):
 
     @onlyconnected()
     @tested()
+    @retrylooped()
     def _get_imagefilter_mode(self):
         self._msg_tx(74, fill = 4)
         res = self._msg_rx(fmt = 'i')
@@ -1105,6 +1204,7 @@ class XL30Serial(XL30):
     @onlyconnected()
     @buggy(bugs="Cannot set average with != 2 frames")
     @untested()
+    @retrylooped()
     def _set_imagefilter_mode(self, filtermode, frames):
         # Note that setting average for frames != 2 currently does not work
         if frames < 1:
@@ -1127,6 +1227,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _get_specimen_current_detector_mode(self):
         self._msg_tx(58, fill = 4)
         rep = self._msg_rx(fmt = "i")
@@ -1150,6 +1251,7 @@ class XL30Serial(XL30):
 
     @buggy(bugs="Does not work on our XL30 ESEM")
     @onlyconnected()
+    @retrylooped()
     def _set_specimen_current_detector_mode(self, mode):
         if not isinstance(mode, ScanningElectronMicroscope_SpecimenCurrentDetectorMode):
             raise ValueError("Mode has to be a ScanningElectronMicroscope_SpecimentCurrentDetectorMode, is {mode}")
@@ -1172,6 +1274,7 @@ class XL30Serial(XL30):
 
     @buggy(bugs="Does not work on our XL30 ESEM")
     @onlyconnected()
+    @retrylooped()
     def _get_specimen_current(self):
         # Note this only works in measure mode ...
         self._msg_tx(60, fill = 4)
@@ -1184,6 +1287,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _is_beam_blanked(self):
         self._msg_tx(62, fill = 4)
         resp = self._msg_rx(fmt = "i")
@@ -1198,6 +1302,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _blank(self):
         self._msg_tx(63, bytes([1, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
@@ -1208,6 +1313,7 @@ class XL30Serial(XL30):
 
     @untested()
     @onlyconnected()
+    @retrylooped()
     def _unblank(self):
         self._msg_tx(63, bytes([0, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
@@ -1216,6 +1322,34 @@ class XL30Serial(XL30):
             return False
         return True
 
+    @untested()
+    @onlyconnected()
+    @retrylooped()
+    def _oplock(self, lock = True):
+        if lock:
+            self._msg_tx(39, bytes([1, 0, 0, 0]))
+        else:
+            self._msg_tx(39, bytes([0, 0, 0, 0]))
+        resp = self._msg_rx(fmt = 'i')
+        if resp["error"]:
+            self._logger.error("Failed to lock/unlock the system")
+            return False
+        return True
+
+    @untested()
+    @onlyconnected()
+    @retrylooped()
+    def _isOplocked(self):
+        self._msg_tx(38, fill = 4)
+        resp = self._msg_rx(fmt = 'i')
+        if resp["error"]:
+            self._logger.error("Failed to query lock state")
+            return None
+
+        if resp["data"][0] == 0:
+            return False
+        else:
+            return True
 
 
 
