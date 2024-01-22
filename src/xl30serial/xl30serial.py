@@ -559,8 +559,8 @@ class XL30Serial(XL30):
     @onlyconnected()
     @retrylooped()
     def _set_spotsize(self, spotsize):
-        if (spotsize < 1.0) or (spotsize > 8.0):
-            raise ValueError("Valid spotsizes (probe currents) in the range of 1.0 to 8.0")
+        if (spotsize < 1.0) or (spotsize > 10.0):
+            raise ValueError("Valid spotsizes (probe currents) in the range of 1.0 to 10.0")
         self._msg_tx(7, struct.pack("<f", float(spotsize)))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
