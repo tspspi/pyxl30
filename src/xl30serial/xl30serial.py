@@ -1062,6 +1062,35 @@ class XL30Serial(XL30):
         self._logger.info(f"New beamshift x={x}mm, y={y}mm")
         return True
 
+    @onlyconnected()
+    @untested()
+    @retrylooped()
+    def _get_scanrotation(self):
+        self._msg_tx(98, fill = 1*4)
+        resp = self._msg_rx(fmt = "f")
+        if resp['error']:
+            self._logger.error("Failed to query scan rotation")
+            return None
+        self._logger.debug(f"Queried scan rotation: {resp['data'][0]} deg")
+        return resp['data'][0]
+
+    @onlyconnected()
+    @untested()
+    @retrylooped()
+    def _set_scanrotation(self, rot = None):
+        rot = float(rot)
+        if (rot < 90) or (rot > 90):
+            self._logger.error("Scan rotation has to be in range +- 90 deg")
+            return False
+        self._msg_tx(99, struct.pack('<f', rot))
+        resp = self._msg_rx(fmt = "f")
+        if resp['error']:
+            self._logger.error("Failed to set scan rotation")
+            return False
+
+        self._logger.info(f"New scan rotation rot={rot}deg")
+        return True
+
     @tested()
     @onlyconnected()
     @retrylooped()
