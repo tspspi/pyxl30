@@ -52,4 +52,5 @@ with XL30Serial("/dev/ttyU0", logger, debug = True) as xl:
 
    xl._set_scanmode(ScanningElectronMicroscope_ScanMode.FULL_FRAME)
    xl._set_hightension(0)
+
 ```
