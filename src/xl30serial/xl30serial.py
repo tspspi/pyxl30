@@ -687,6 +687,149 @@ class XL30Serial(XL30):
         self._logger.info(f"New detector: {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
         return True
 
+    @onlyconnected()
+    @retrylooped()
+    def _set_linetime(self, lt):
+        supportedLts = {
+            0 : 1.25,
+            1 : 1.87
+            2 : 3.43,
+            3 : 6.86,
+            4 : 20.0,
+            5 : 40.0,
+            6 : 60.0,
+            7 : 120.0,
+            8 : 240.0,
+            9 : 360.0,
+            10 : 1020.0,
+            100 : "TV"
+        }
+
+        setval = None
+        for l in supportedLts:
+            if lt == supportedLts[l]:
+                setval = l
+                break
+        if setval is None:
+            raise ValueError("Unsupported line time {lt} ms, only supporting {supportedLts}")
+
+        self._msg_tx(21, bytes([ setval, 0, 0, 0 ]))
+        resp = self._msg_rx(fmt = "i")
+        if resp['error']:
+            self._logger.error("Failed to set line time {lt} ms")
+            return False
+        self._logger.info("Set line time {lt} ms")
+        return True
+
+    @onlyconnected()
+    @retrylooped()
+    def _get_linetime(self):
+        supportedLts = {
+            0 : 1.25,
+            1 : 1.87
+            2 : 3.43,
+            3 : 6.86,
+            4 : 20.0,
+            5 : 40.0,
+            6 : 60.0,
+            7 : 120.0,
+            8 : 240.0,
+            9 : 360.0,
+            10 : 1020.0,
+            100 : "TV"
+        }
+
+        self._msg_tx(21, fill = 4)
+        resp = self._msg_rx(fmt = "i")
+        if resp['error']:
+            self._logger.error(f"Failed to query line time from XL30")
+            return None
+        v = resp['data'][0]
+
+        for lt in supportedLts:
+            if lt == v:
+                rv = supportedLts[v]
+                self._logger.info(f"Queried line time {rv} ms")
+                return rv
+        self._logger.error(f"Unknown queried line time value {v}")
+        return None
+
+
+
+
+
+    @onlyconnected()
+    @retrylooped()
+    def _set_linesperframe(self, lines):
+        supportedLines = {
+            0 : 121,
+            1 : 242,
+            2 : 484,
+            3 : 968,
+            4 : 1452,
+            5 : 1936,
+            6 : 2420,
+            7 : 2904,
+            8 : 3388,
+            9 : 3872,
+            10 : 180,
+            11 : 360,
+            12 : 720,
+            100 : "TV"
+        }
+
+        setValue = None
+        for l in supportedLines:
+            if lines == supportedLines[l]:
+                setValue = l
+                break
+        if setValue is None:
+            raise ValueError(f"Unspported number of lines {lines}, supporting only {supportedLines}")
+
+        self._msg_tx(19, bytes([ setValue, 0, 0, 0 ]))
+        resp = self._msg_rx(fmt = "i")
+        if resp['error']:
+            self._logger.error(f"Failed to set number of lines to {lines} (value {setValue})")
+            return False
+        else:
+            self._logger.info(f"Set number of lines to {lines}")
+            return True
+
+    @onlyconnected()
+    @retrylooped()
+    def _get_linesperframe(self):
+        supportedLines = {
+            0 : 121,
+            1 : 242,
+            2 : 484,
+            3 : 968,
+            4 : 1452,
+            5 : 1936,
+            6 : 2420,
+            7 : 2904,
+            8 : 3388,
+            9 : 3872,
+            10 : 180,
+            11 : 360,
+            12 : 720,
+            100 : "TV"
+        }
+
+        self._msg_tx(18, fill = 4)
+        resp = self._msg_rx(fmt = "i")
+        if resp['error']:
+            self._logger.error(f"Failed to query number of lines per frame")
+            return None
+        v = resp['data'][0]
+
+        for l in supportedLines:
+            if v == l:
+                self._logger.info(f"Queried {supportedLines[l]} per frame")
+                return supportedLines[l]
+
+        self._logger.error(f"Unknown value for lines per frame: {v}")
+        return None
+
     @tested()
     @onlyconnected()
     @retrylooped()
