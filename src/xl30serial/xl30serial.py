@@ -19,7 +19,7 @@ class onlyconnected:
     def __call__(self, func):
         def wrapper(*args, **kwargs):
             if args[0]._port is None:
-                args[0]._logger.error(f"Called {func} but microscope is not connected")
+                args[0]._logger.error(f"[XL30] Called {func} but microscope is not connected")
                 raise ScanningElectronMicroscope_NotConnectedException()
             return func(*args, **kwargs)
         return wrapper
@@ -38,9 +38,9 @@ class retrylooped:
                     return retValue
                 except Exception as e:
                     # We have encountered an exception - if we retry we ignore it
-                    args[0]._logger.error(f"Encountered communicaiton error:\n{e}")
+                    args[0]._logger.error(f"[XL30] Encountered communicaiton error:\n{e}")
                     if args[0]._retryCountState > 0:
-                        args[0]._logger.warning("Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
+                        args[0]._logger.warning("[XL30] Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
                         # We can simply retry ...
                         args[0]._retryCountState = args[0]._retryCountState - 1
                         sleep(args[0]._retryDelay)
@@ -48,11 +48,11 @@ class retrylooped:
                     else:
                         # We have to reconnect if we have reconnections available
                         if args[0]._reconnectCountState > 0:
-                            args[0]._logger.warning("Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
+                            args[0]._logger.warning("[XL30] Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
                             args[0]._reconnect()
                             args[0]._reconnectCountState = args[0]._reconnectCountState - 1
                         else:
-                            self._logger.error(f"{args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
+                            self._logger.error(f"[XL30] {args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
                             raise
         return wrapper
 
@@ -70,7 +70,7 @@ class untested:
         pass
     def __call__(self, func):
         def wrapper(*args, **kwargs):
-            args[0]._logger.warning(f"Calling untested function {func} / function with possibly known bugs")
+            args[0]._logger.warning(f"[XL30] Calling untested function {func} / function with possibly known bugs")
             return func(*args, **kwargs)
         return wrapper
 class buggy:
@@ -82,7 +82,7 @@ class buggy:
         pass
     def __call__(self, func):
         def wrapper(*args, **kwargs):
-            args[0]._logger.warning(f"Calling function {func} with known bugs ({self._bugs})!")
+            args[0]._logger.warning(f"[XL30] Calling function {func} with known bugs ({self._bugs})!")
             return func(*args, **kwargs)
         return wrapper
 
@@ -194,11 +194,11 @@ class XL30Serial(XL30):
 
     def __enter__(self):
         if self._usedConnect:
-            self._logger.error("Enter called on connected microscope")
+            self._logger.error("[XL30] Enter called on connected microscope")
             raise ValueError("Cannot use context management on connected microscope")
 
         if (self._port is None) and (self._portName is not None):
-            self._logger.debug(f"Connecting to XL30 on serial port {self._portName}")
+            self._logger.debug(f"[XL30] Connecting to XL30 on serial port {self._portName}")
             self._port = serial.Serial(
                     self._portName,
                     baudrate = 9600,
@@ -209,28 +209,28 @@ class XL30Serial(XL30):
             )
             self._initialRequests()
         else:
-            self._logger.debug("Not executing connect - either port already passed or no name present")
+            self._logger.debug("[XL30] Not executing connect - either port already passed or no name present")
 
         self._usesContext = True
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._logger.debug("Exiting XL30 context")
+        self._logger.debug("[XL30] Exiting XL30 context")
         self._close()
         self._usesContext = False
 
     def _close(self):
-        self._logger.debug("Close called")
+        self._logger.debug("[XL30] Close called")
         atexit.unregister(self._close)
         if (self._port is not None) and (self._portName is not None):
-            self._logger.debug("Closing serial port")
+            self._logger.debug("[XL30] Closing serial port")
             self._port.close()
             self._port = None
 
     def _connect(self):
-        self._logger.debug("Connect called")
+        self._logger.debug("[XL30] Connect called")
         if (self._port is None) and (self._portName is not None):
-            self._logger.debug(f"Connecting to serial port {self._portName}")
+            self._logger.debug(f"[XL30] Connecting to serial port {self._portName}")
             self._port = serial.Serial(
                     self._portName,
                     baudrate = 9600,
@@ -241,17 +241,17 @@ class XL30Serial(XL30):
             )
             self._initialRequests()
         else:
-            self._logger.debug("Not opening serial port - either port has been passed or no port name present")
+            self._logger.debug("[XL30] Not opening serial port - either port has been passed or no port name present")
         return True
 
     def _disconnect(self):
-        self._logger.debug("Disconnect called")
+        self._logger.debug("[XL30] Disconnect called")
         if (self._port is not None):
             self._close()
         return True
 
     def _reconnect(self):
-        self._logger.debug("Trying to reconenct")
+        self._logger.debug("[XL30] Trying to reconenct")
         if (self._port is not None):
             try:
                 self._port.close()
@@ -277,7 +277,7 @@ class XL30Serial(XL30):
         fill = None
     ):
         if (opCode < 0) or (opCode > 255):
-            self._logger.error(f"Requested to transmit OpCode {opCode} out of range 0-255")
+            self._logger.error(f"[XL30] Requested to transmit OpCode {opCode} out of range 0-255")
             raise ValueError("Command not transmitable")
 
         if fill is not None:
@@ -287,7 +287,7 @@ class XL30Serial(XL30):
 
         if payload is not None:
             if len(payload) > 255-5:
-                self._logger.error(f"Requested amount of data ({len(payload)} bytes) out of range for single message block")
+                self._logger.error(f"[XL30] Requested amount of data ({len(payload)} bytes) out of range for single message block")
                 raise ValueError("Payload exceeds single message size")
             payloadSize = len(payload)
         else:
@@ -306,7 +306,7 @@ class XL30Serial(XL30):
         msg += bytes([chksum])
 
         # Transmit message
-        self._logger.debug(f"TX: {msg}")
+        self._logger.debug(f"[XL30] TX: {msg}")
         self._port.write(msg)
 
         return True
@@ -319,16 +319,16 @@ class XL30Serial(XL30):
         msg = self._port.read(2)
         if msg == b'':
             # Timeout indicates no message has been received
-            self._logger.warning("Timeout during RX")
+            self._logger.warning("[XL30] Timeout during RX")
             return None
 
         if len(msg) != 2:
             # Communication error, not enough bytes received in one timeout - no valid message received
-            self._logger.warning("Incomplete message during RX")
+            self._logger.warning("[XL30] Incomplete message during RX")
             return None
 
         if msg[0] != 0x05:
-            self._logger.error(f"Invalid message response. Expecting ID 0x05, got {msg[0]}")
+            self._logger.error(f"[XL30] Invalid message response. Expecting ID 0x05, got {msg[0]}")
             raise ScanningElectronMicroscope_CommunicationError("Invalid message response")
 
         msgLen = msg[1]
@@ -338,7 +338,7 @@ class XL30Serial(XL30):
             b = self._port.read(1)
             if b == b'':
                 # Timeout - no valid message received
-                self._logger.error(f"Invalid message response. Partial message: {msg}")
+                self._logger.error(f"[XL30] Invalid message response. Partial message: {msg}")
                 raise ScanningElectronMicroscope_CommunicationError("Invalid message response: Timeout, partial message")
             toRead = toRead - 1
             msg += b
@@ -349,12 +349,12 @@ class XL30Serial(XL30):
             chksum = (chksum + msg[i]) % 256
 
         if chksum != msg[-1]:
-            self._logger.error(f"Communication error: RX invalid checksum: {msg}")
+            self._logger.error(f"[XL30] Communication error: RX invalid checksum: {msg}")
             raise ScanningElectronMicroscope_CommunicationError(f"Invalid checksum on message {msg}")
 
         # Verify status bits
         if int(msg[3]) & 0x3F != 0:
-            self._logger.error(f"Invalid status bits set on RX: {msg[3]}")
+            self._logger.error(f"[XL30] Invalid status bits set on RX: {msg[3]}")
             raise ScanningElectronMicroscope_CommunicationError(f"Invalid status bits set {msg[3]}")
 
         self._logger.debug(f"RX: {msg}")
@@ -392,7 +392,7 @@ class XL30Serial(XL30):
             if not isError:
                 # Parse as requested
                 if (int(msg[1]) - 5) < (len(fmt)*4):
-                    self._logger.error(f"Requested parsing according to {fmt} ({len(fmt) * 4} bytes) but got only {int(msg[1])-5} payload bytes")
+                    self._logger.error(f"[XL30] Requested parsing according to {fmt} ({len(fmt) * 4} bytes) but got only {int(msg[1])-5} payload bytes")
                     raise ValueError(f"Requested parsing according to {fmt} ({len(fmt) * 4} bytes) but got only {int(msg[1])-5} payload bytes")
                 idx = 0
                 for c in fmt:
@@ -406,11 +406,11 @@ class XL30Serial(XL30):
                 msgp['data'] = data
         if isError:
             if (int(msg[1]) - 5) < 4:
-                self._logger.error(f"Expected error code - but got {int(msg[1]) - 5} bytes instead of 4")
+                self._logger.error(f"[XL30] Expected error code - but got {int(msg[1]) - 5} bytes instead of 4")
                 raise ScanningElectronMicroscope_CommunicationError(f"Expected error code - but got {int(msg[1]) - 5} bytes instead of 4")
             msgp['errorcode'] = int(msg[4]) + int(msg[5]) * 256 + int(msg[6]) * 65536 + int(msg[7]) * 16777216
 
-        self._logger.debug(f"RX: {msgp}")
+        self._logger.debug(f"[XL30] RX: {msgp}")
         return msgp
 
     @onlyconnected()
@@ -433,7 +433,7 @@ class XL30Serial(XL30):
                     self._detectorIds[detid]['supported'] = False
                     continue
                 if self._set_detector(detid):
-                    self._logger.info(f"Supported detector {detid}: {self._detectorIds[detid]}")
+                    self._logger.info(f"[XL30] Supported detector {detid}: {self._detectorIds[detid]}")
                     self._detectorIds[detid]['supported'] = True
                 else:
                     self._detectorIds[detid]['supported'] = False
@@ -450,7 +450,7 @@ class XL30Serial(XL30):
     @onlyconnected()
     @retrylooped()
     def _get_id(self):
-        self._logger.debug("Requesting ID")
+        self._logger.debug("[XL30] Requesting ID")
 
         self._msg_tx(0, fill = 4)
         resp = self._msg_rx(fmt = "i")
@@ -467,7 +467,7 @@ class XL30Serial(XL30):
                 'serial' : resp['data'][1]
             }
         else:
-            self._logger.error(f"Unknown response to ID request: {resp}")
+            self._logger.error(f"[XL30] Unknown response to ID request: {resp}")
             raise ScanningElectronMicroscope_CommunicationError(f"Unknown response to ID reqeuest: {resp}")
 
     @tested()
@@ -481,9 +481,9 @@ class XL30Serial(XL30):
         resp = self._msg_rx(fmt = "i")
 
         if resp['data'][0] == 0:
-            self._logger.debug("High tension is currently disabled")
+            self._logger.debug("[XL30] High tension is currently disabled")
             return False
-        self._logger.debug("High tension enabled")
+        self._logger.debug("[XL30] High tension enabled")
 
         self._msg_tx(2, fill = 4)
         resp = self._msg_rx(fmt = "f")
@@ -497,28 +497,28 @@ class XL30Serial(XL30):
             raise ValueError("High tension voltage has to be in range 200V-30kV")
 
         if voltage != 0:
-            self._logger.info("Enabling high tension")
+            self._logger.info("[XL30] Enabling high tension")
             self._msg_tx(5, bytes([1,0,0,0]))
             resp = self._msg_rx()
             if resp['error']:
-                self._logger.error(f"Enabling high tension failed. Error code {resp['errorcode']}")
+                self._logger.error(f"[XL30] Enabling high tension failed. Error code {resp['errorcode']}")
                 return False
 
-            self._logger.info(f"Setting high tension to {voltage}")
+            self._logger.info(f"[XL30] Setting high tension to {voltage}")
             self._msg_tx(3, struct.pack('<f', float(voltage)))
             resp = self._msg_rx()
             if resp['error']:
-                self._logger.error(f"Enabling high tension failed. Error code {resp['errorcode']}")
+                self._logger.error(f"[XL30] Enabling high tension failed. Error code {resp['errorcode']}")
                 self._set_hightension(0)
                 return False
 
             return True
         else:
-            self._logger.info("Disabling high tension")
+            self._logger.info("[XL30] Disabling high tension")
             self._msg_tx(5, bytes([0,0,0,0]))
             resp = self._msg_rx()
             if resp['error']:
-                self._logger.error(f"Failed to disable high tension. Error code {resp['errorcode']}")
+                self._logger.error(f"[XL30] Failed to disable high tension. Error code {resp['errorcode']}")
                 return False
             return True
 
@@ -526,37 +526,37 @@ class XL30Serial(XL30):
     @onlyconnected()
     @retrylooped()
     def _vent(self, stop = False):
-        self._logger.debug(f"Request venting (stop: {stop})")
+        self._logger.debug(f"[XL30] Request venting (stop: {stop})")
 
         if not stop:
             self._msg_tx(113, bytes([1, 0, 0, 0]))
             resp = self._msg_rx()
             if resp['error']:
-                self._logger.error("Failed to execute venting command. Error code {resp['errorcode']}")
+                self._logger.error("[XL30] Failed to execute venting command. Error code {resp['errorcode']}")
                 return False
-            self._logger.info("Venting")
+            self._logger.info("[Xl30] Venting")
             return True
         else:
             self._msg_tx(113, bytes([2, 0, 0, 0]))
             resp = self._msg_rx()
             if resp['error']:
-                self._logger.error("Failed to stop venting command. Error code {resp['errorcode']}")
+                self._logger.error("[XL30] Failed to stop venting command. Error code {resp['errorcode']}")
                 return False
-            self._logger.info("Stop venting")
+            self._logger.info("[XL30] Stop venting")
             return True
 
     @tested()
     @onlyconnected()
     @retrylooped()
     def _pump(self):
-        self._logger.debug("Request pumping")
+        self._logger.debug("[XL30] Request pumping")
 
         self._msg_tx(113, bytes([0, 0, 0, 0]))
         resp = self._msg_rx()
         if resp['error']:
-            self._logger.error("Failed to start pumping")
+            self._logger.error("[XL30] Failed to start pumping")
             return False
-        self._logger.info("Pumping")
+        self._logger.info("[XL30] Pumping")
         return True
       
     @tested()
@@ -566,9 +566,9 @@ class XL30Serial(XL30):
         self._msg_tx(6, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error("Failed to query spotsize")
+            self._logger.error("[XL30] Failed to query spotsize")
             return False
-        self._logger.info(f"Queried spot size {resp['data'][0]}")
+        self._logger.info(f"[XL30] Queried spot size {resp['data'][0]}")
         return resp['data'][0]
 
     @tested()
@@ -580,10 +580,10 @@ class XL30Serial(XL30):
         self._msg_tx(7, struct.pack("<f", float(spotsize)))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error(f"Failed to set spotsize to {spotsize}")
+            self._logger.error(f"[XL30] Failed to set spotsize to {spotsize}")
             return False
         else:
-            self._logger.info(f"New spotsize {spotsize}")
+            self._logger.info(f"[XL30] New spotsize {spotsize}")
             return True
 
     @tested()
@@ -593,9 +593,9 @@ class XL30Serial(XL30):
         self._msg_tx(12, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error(f"Failed to query magnification")
+            self._logger.error(f"[XL30] Failed to query magnification")
             return False
-        self._logger.info(f"Queried magnification {resp['data'][0]}")
+        self._logger.info(f"[XL30] Queried magnification {resp['data'][0]}")
         return resp['data'][0]
 
     @tested()
@@ -608,10 +608,10 @@ class XL30Serial(XL30):
         self._msg_tx(13, struct.pack("<f", magnification))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error(f"Failed to set magnification")
+            self._logger.error(f"[XL30] Failed to set magnification")
             return False
 
-        self._logger.info(f"New magnification {magnification}")
+        self._logger.info(f"[XL30] New magnification {magnification}")
         return True
 
     @untested()
@@ -624,7 +624,7 @@ class XL30Serial(XL30):
         self._msg_tx(70, fill = 8)
         resp = self._msg_rx(fmt = "ff")
         if resp['error']:
-            self._logger.error(f"Failed to read stigmator setting")
+            self._logger.error(f"[XL30] Failed to read stigmator setting")
             return None, None
 
         return (resp['data'][0], resp['data'][1])
@@ -642,7 +642,7 @@ class XL30Serial(XL30):
         if (x is None) or (y is None):
             oldx, oldy = self._get_stigmator()
             if oldx is None:
-                self._logger.error("Failed to query old stigmator setting")
+                self._logger.error("[XL30] Failed to query old stigmator setting")
                 return False
             if x is None:
                 x = oldx
@@ -652,10 +652,10 @@ class XL30Serial(XL30):
         self._msg_tx(71, struct.pack("<ff", x, y))
         resp = self._msg_rx(fmt = "ff")
         if resp['error']:
-            self._logger.error(f"Failed to set stigmator setting to {x} and {y}")
+            self._logger.error(f"[XL30] Failed to set stigmator setting to {x} and {y}")
             return False
 
-        self._logger.info(f"New stigmator settings: {x}, {y}")
+        self._logger.info(f"[XL30] New stigmator settings: {x}, {y}")
         return True
 
     @tested()
@@ -665,7 +665,7 @@ class XL30Serial(XL30):
         self._msg_tx(14, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error("Failed to query current selected detector")
+            self._logger.error("[XL30] Failed to query current selected detector")
             return False
 
         # Got detector ID and type ... translate
@@ -692,15 +692,15 @@ class XL30Serial(XL30):
         if detectorId not in self._detectorIds:
             raise ValueError(f"Unknown detector {detectorId}")
 
-        self._logger.info(f"Requesting change to detector {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
+        self._logger.info(f"[XL30] Requesting change to detector {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
 
         self._msg_tx(15, bytes([ detectorId, self._detectorIds[detectorId]['type'], 0, 0]))
         resp = self._msg_rx()
         if resp['error']:
-            self._logger.error(f"Failed to set detector to {detectorId}")
+            self._logger.error(f"[XL30] Failed to set detector to {detectorId}")
             return False
 
-        self._logger.info(f"New detector: {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
+        self._logger.info(f"[XL30] New detector: {detectorId} ({self._detectorIds[detectorId]['shortname']}: {self._detectorIds[detectorId]['name']})")
         return True
 
     @onlyconnected()
@@ -732,9 +732,9 @@ class XL30Serial(XL30):
         self._msg_tx(21, bytes([ setval, 0, 0, 0 ]))
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error("Failed to set line time {lt} ms")
+            self._logger.error("[XL30] Failed to set line time {lt} ms")
             return False
-        self._logger.info("Set line time {lt} ms")
+        self._logger.info("[XL30] Set line time {lt} ms")
         return True
 
     @onlyconnected()
@@ -758,16 +758,16 @@ class XL30Serial(XL30):
         self._msg_tx(21, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"Failed to query line time from XL30")
+            self._logger.error(f"[XL30] Failed to query line time from XL30")
             return None
         v = resp['data'][0]
 
         for lt in supportedLts:
             if lt == v:
                 rv = supportedLts[v]
-                self._logger.info(f"Queried line time {rv} ms")
+                self._logger.info(f"[XL30] Queried line time {rv} ms")
                 return rv
-        self._logger.error(f"Unknown queried line time value {v}")
+        self._logger.error(f"[XL30] Unknown queried line time value {v}")
         return None
 
 
@@ -805,10 +805,10 @@ class XL30Serial(XL30):
         self._msg_tx(19, bytes([ setValue, 0, 0, 0 ]))
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"Failed to set number of lines to {lines} (value {setValue})")
+            self._logger.error(f"[XL30] Failed to set number of lines to {lines} (value {setValue})")
             return False
         else:
-            self._logger.info(f"Set number of lines to {lines}")
+            self._logger.info(f"[XL30] Set number of lines to {lines}")
             return True
 
     @onlyconnected()
@@ -834,16 +834,16 @@ class XL30Serial(XL30):
         self._msg_tx(18, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"Failed to query number of lines per frame")
+            self._logger.error(f"[XL30] Failed to query number of lines per frame")
             return None
         v = resp['data'][0]
 
         for l in supportedLines:
             if v == l:
-                self._logger.info(f"Queried {supportedLines[l]} per frame")
+                self._logger.info(f"[XL30] Queried {supportedLines[l]} per frame")
                 return supportedLines[l]
 
-        self._logger.error(f"Unknown value for lines per frame: {v}")
+        self._logger.error(f"[XL30] Unknown value for lines per frame: {v}")
         return None
 
     @tested()
@@ -856,9 +856,9 @@ class XL30Serial(XL30):
         self._msg_tx(17, bytes([ mode.value, 0, 0, 0 ]))
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"Failed to set scan mode to {mode}")
+            self._logger.error(f"[XL30] Failed to set scan mode to {mode}")
 
-        self._logger.info(f"Scan mode set to {mode}")
+        self._logger.info(f"[XL30] Scan mode set to {mode}")
         return True
 
     @tested()
@@ -868,7 +868,7 @@ class XL30Serial(XL30):
         self._msg_tx(16, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"Failed to query scan mode")
+            self._logger.error(f"[XL30] Failed to query scan mode")
             return None
 
         v = resp['data'][0]
@@ -880,7 +880,7 @@ class XL30Serial(XL30):
             venum = None
 
         if venum is None:
-            self._logger.error(f"Microscope reported unknown scan mode {v}")
+            self._logger.error(f"[XL30] Microscope reported unknown scan mode {v}")
             return None
 
         r = {
@@ -896,10 +896,10 @@ class XL30Serial(XL30):
         self._msg_tx(37)
         resp = self._msg_rx()
         if resp['error']:
-            self._logger.error("Failed to make photo")
+            self._logger.error("[XL30] Failed to make photo")
             return False
         else:
-            self._logger.info("Stored photo")
+            self._logger.info("[XL30] Stored photo")
             return True
 
     @tested()
@@ -941,7 +941,7 @@ class XL30Serial(XL30):
         self._msg_tx(48, fill = 4)
         res = self._msg_rx(fmt = "f")
         if res['error']:
-            self._logger.error("Failed to query contrast")
+            self._logger.error("[XL30] Failed to query contrast")
             return None
 
         return res['data'][0]
@@ -956,10 +956,10 @@ class XL30Serial(XL30):
         self._msg_tx(49, struct.pack("<f", contrast))
         res = self._msg_rx(fmt = "f")
         if res['error']:
-            self._logger.error("Failed to set contrast")
+            self._logger.error("[XL30] Failed to set contrast")
             return False
 
-        self._logger.info(f"New contrast: {contrast}")
+        self._logger.info(f"[XL30] New contrast: {contrast}")
         return True
 
     @tested()
@@ -969,7 +969,7 @@ class XL30Serial(XL30):
         self._msg_tx(50, fill = 4)
         res = self._msg_rx(fmt = "f")
         if res['error']:
-            self._logger.error("Failed to query brightness")
+            self._logger.error("[XL30] Failed to query brightness")
             return None
 
         return res['data'][0]
@@ -984,10 +984,10 @@ class XL30Serial(XL30):
         self._msg_tx(51, struct.pack("<f", brightness))
         res = self._msg_rx(fmt = "f")
         if res['error']:
-            self._logger.error("Failed to set brightness")
+            self._logger.error("[XL30] Failed to set brightness")
             return False
 
-        self._logger.info(f"New brightness: {brightness}")
+        self._logger.info(f"[XL30] New brightness: {brightness}")
         return True
 
     @tested()
@@ -997,10 +997,10 @@ class XL30Serial(XL30):
         self._msg_tx(53, fill = 4)
         res = self._msg_rx()
         if res['error']:
-            self._logger.error("Auto contrast and brightness did not execute")
+            self._logger.error("[XL30] Auto contrast and brightness did not execute")
             return False
 
-        self._logger.info("Auto contrast an brightness did execute")
+        self._logger.info("[XL30] Auto contrast an brightness did execute")
         # ACB takes some time
         sleep(30)
         return True
@@ -1022,9 +1022,9 @@ class XL30Serial(XL30):
         self._port.timeout = tout
 
         if res['error']:
-            self._logger.error("Auto focus did not execute")
+            self._logger.error("[XL30] Auto focus did not execute")
             return False
-        self._logger.info("Auto focus executed")
+        self._logger.info("[XL30] Auto focus executed")
 
         return True
 
@@ -1033,7 +1033,7 @@ class XL30Serial(XL30):
     @retrylooped()
     def _set_databar_text(self, newtext):
         if len(newtext) > 39:
-            self._logger.error("User requested more than 40 characters in data bar")
+            self._logger.error("[XL30] User requested more than 40 characters in data bar")
             raise ValueError("Can only show up to 40 characters in data bar")
 
         txtbin = bytes([0,0,0,0]) + newtext.encode('ascii')
@@ -1044,10 +1044,10 @@ class XL30Serial(XL30):
         self._msg_tx(101, txtbin)
         resp = self._msg_rx()
         if resp['error']:
-            self._logger.error("Failed to set databar text")
+            self._logger.error("[XL30] Failed to set databar text")
             return False
 
-        self._logger.info(f"New databar text {newtext}")
+        self._logger.info(f"[XL30] New databar text {newtext}")
         return True
 
     @onlyconnected()
@@ -1070,7 +1070,7 @@ class XL30Serial(XL30):
     @onlyconnected()
     @retrylooped()
     def _stage_home(self):
-        self._logger.info("Started homing")
+        self._logger.info("[XL30] Started homing")
 
         # Increase timeout to 2 min 30 secs + 15 secs grace timeout
         tout = self._port.timeout
@@ -1083,9 +1083,9 @@ class XL30Serial(XL30):
         self._port.timeout = tout
 
         if resp['error']:
-            self._logger.error("Homing failed")
+            self._logger.error("[XL30] Homing failed")
             return False
-        self._logger.info("Homed stage")
+        self._logger.info("[XL30] Homed stage")
         return True
 
     @onlyconnected()
@@ -1095,10 +1095,10 @@ class XL30Serial(XL30):
         self._msg_tx(190, fill = 20)
         resp = self._msg_rx(fmt = "fffff")
         if resp['error']:
-            self._logger.error("Failed to query stage position")
+            self._logger.error("[XL30] Failed to query stage position")
             return None
 
-        self._logger.debug(f"Queried stage position: X:{resp['data'][0]}mm, Y:{resp['data'][1]}mm, Z:{resp['data'][2]}mm, Tilt:{resp['data'][3]}mm, Rot:{resp['data'][4]}mm")
+        self._logger.debug(f"[XL30] Queried stage position: X:{resp['data'][0]}mm, Y:{resp['data'][1]}mm, Z:{resp['data'][2]}mm, Tilt:{resp['data'][3]}mm, Rot:{resp['data'][4]}mm")
 
         return {
             'x' : resp['data'][0],
@@ -1112,7 +1112,7 @@ class XL30Serial(XL30):
     @buggy(bugs = "Does not check boundaries! Ignores error when setting z position. Sets tilt before z position ...? Maybe implement here moving down before changing tilt ...")
     @retrylooped()
     def _set_stage_position(self, x = None, y = None, z = None, tilt = None, rot = None):
-        self._logger.debug(f"Starting move to x:{x}, y:{y}, z:{z}, tilt:{tilt}, rot:{rot}")
+        self._logger.debug(f"[XL30] Starting move to x:{x}, y:{y}, z:{z}, tilt:{tilt}, rot:{rot}")
         ox,oy,oz,otilt,orot = x,y,z,tilt,rot
 
         # Get current position (required for some of the methods)
@@ -1127,54 +1127,54 @@ class XL30Serial(XL30):
             # Execute Command 177 SetPosition (synchronous)
             tout = self._port.timeout
             self._port.timeout = 60
-            self._logger.debug(f"Moving to position x:{x} mm, y:{y} mm")
+            self._logger.debug(f"[XL30] Moving to position x:{x} mm, y:{y} mm")
             self._msg_tx(177, struct.pack("<ff", x, y))
             rep = self._msg_rx(fmt = "ff")
             self._port.timeout = tout
             if rep['error']:
-                self._logger.error(f"Failed moving to x:{x}mm, y:{y}mm")
+                self._logger.error(f"[XL30] Failed moving to x:{x}mm, y:{y}mm")
                 return False
-            self._logger.info(f"New position x:{x}mm, y:{y}mm")
+            self._logger.info(f"[XL30] New position x:{x}mm, y:{y}mm")
 
         if rot is not None:
             # Execute Command 179 SetRotation (synchronous)
             tout = self._port.timeout
             self._port.timeout = 60
-            self._logger.debug(f"Moving to position rot:{rot} deg")
+            self._logger.debug(f"[XL30] Moving to position rot:{rot} deg")
             self._msg_tx(179, struct.pack("<f", rot))
             rep = self._msg_rx(fmt = "f")
             self._port.timeout = tout
             if rep['error']:
-                self._logger.error(f"Failed to rotate to {rot} deg")
+                self._logger.error(f"[XL30] Failed to rotate to {rot} deg")
                 return False
-            self._logger.info(f"New rotation rot:{rot} deg")
+            self._logger.info(f"[XL30] New rotation rot:{rot} deg")
 
         if z is not None:
             # Set z position ...
             tout = self._port.timeout
             self._port.timeout = 60
-            self._logger.debug(f"Moving to position z:{z} mm")
+            self._logger.debug(f"[XL30] Moving to position z:{z} mm")
             self._msg_tx(187, struct.pack("<f", z))
             rep = self._msg_rx(fmt = "f")
             self._port.timeout = tout
             if rep['error']:
-                self._logger.error(f"Failed to set z position to {z} mm")
+                self._logger.error(f"[XL30] Failed to set z position to {z} mm")
                 #return False
-            self._logger.info(f"New z position: {z} mm")
+            self._logger.info(f"[XL30] New z position: {z} mm")
 
         if tilt is not None:
             # Set tilt
             tout = self._port.timeout
             self._port.timeout = 60
-            self._logger.debug(f"Moving to tilt {tilt} deg")
+            self._logger.debug(f"[XL30] Moving to tilt {tilt} deg")
             self._msg_tx(189, struct.pack("<f", tilt))
             rep = self._msg_rx(fmt = "f")
             if rep['error']:
-                self._logger.error(f"Failed to set tilt position to {tilt} mm")
+                self._logger.error(f"[XL30] Failed to set tilt position to {tilt} mm")
                 return False
-            self._logger.info(f"New tilt position: {tilt} deg")
+            self._logger.info(f"[XL30] New tilt position: {tilt} deg")
 
-        self._logger.info(f"New position set: x:{ox}, y:{oy}, z:{oz}, rot:{orot}, tilt: {otilt}")
+        self._logger.info(f"[XL30] New position set: x:{ox}, y:{oy}, z:{oz}, rot:{orot}, tilt: {otilt}")
         return True
 
     @onlyconnected()
@@ -1184,9 +1184,9 @@ class XL30Serial(XL30):
         self._msg_tx(80, fill = 2*4)
         resp = self._msg_rx(fmt = "ff")
         if resp['error']:
-            self._logger.error("Failed to query beam shift")
+            self._logger.error("[XL30] Failed to query beam shift")
             return None
-        self._logger.debug(f"Queried beamshift x: {resp['data'][0]} mm, y: {resp['data'][1]} mm")
+        self._logger.debug(f"[XL30] Queried beamshift x: {resp['data'][0]} mm, y: {resp['data'][1]} mm")
         return {
             'x' : resp['data'][0],
             'y' : resp['data'][1]
@@ -1198,13 +1198,13 @@ class XL30Serial(XL30):
     @retrylooped()
     def _set_beamshift(self, x = None, y = None):
         if (x is None) and (y is None):
-            self._logger.debug("Not setting beam shift, no data supplied")
+            self._logger.debug("[XL30] Not setting beam shift, no data supplied")
             return True
         if (x is None) or (y is None):
             # First query shift so we can do a complete set
             currentPos = self._get_beamshift()
             if currentPos is None:
-                self._logger.debug("Failed to query current position, cannot set only single component")
+                self._logger.debug("[XL30] Failed to query current position, cannot set only single component")
                 return False
             if x is None:
                 x = currentPos['x']
@@ -1215,10 +1215,10 @@ class XL30Serial(XL30):
         self._msg_tx(81, struct.pack('<ff', x, y,))
         resp = self._msg_rx(fmt = "ff")
         if resp['error']:
-            self._logger.error("Failed to set beamshift")
+            self._logger.error("[XL30] Failed to set beamshift")
             return False
 
-        self._logger.info(f"New beamshift x={x}mm, y={y}mm")
+        self._logger.info(f"[XL30] New beamshift x={x}mm, y={y}mm")
         return True
 
     @onlyconnected()
@@ -1228,9 +1228,9 @@ class XL30Serial(XL30):
         self._msg_tx(98, fill = 1*4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error("Failed to query scan rotation")
+            self._logger.error("[XL30] Failed to query scan rotation")
             return None
-        self._logger.debug(f"Queried scan rotation: {resp['data'][0]} deg")
+        self._logger.debug(f"[XL30] Queried scan rotation: {resp['data'][0]} deg")
         return resp['data'][0]
 
     @onlyconnected()
@@ -1239,15 +1239,15 @@ class XL30Serial(XL30):
     def _set_scanrotation(self, rot = None):
         rot = float(rot)
         if (rot < 90) or (rot > 90):
-            self._logger.error("Scan rotation has to be in range +- 90 deg")
+            self._logger.error("[XL30] Scan rotation has to be in range +- 90 deg")
             return False
         self._msg_tx(99, struct.pack('<f', rot))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error("Failed to set scan rotation")
+            self._logger.error("[XL30] Failed to set scan rotation")
             return False
 
-        self._logger.info(f"New scan rotation rot={rot}deg")
+        self._logger.info(f"[XL30] New scan rotation rot={rot}deg")
         return True
 
     @tested()
@@ -1257,14 +1257,14 @@ class XL30Serial(XL30):
         self._msg_tx(26, fill = 4)
         res = self._msg_rx(fmt = 'f')
         if res['error']:
-            self._logger.error("Failed to query SA/dot shift along X axis")
+            self._logger.error("[XL30] Failed to query SA/dot shift along X axis")
             return None
         xshift = res['data'][0]
 
         self._msg_tx(28, fill = 4)
         res = self._msg_rx(fmt = 'f')
         if res['error']:
-            self._logger.error("Failed to query SA/dot shift along Y axis")
+            self._logger.error("[XL30] Failed to query SA/dot shift along Y axis")
             return None
         yshift = res['data'][0]
 
@@ -1295,17 +1295,17 @@ class XL30Serial(XL30):
             self._msg_tx(27, struct.pack("<f", xshift))
             res = self._msg_rx(fmt = 'i')
             if res['error']:
-                self._logger.error("Failed to set X shift")
+                self._logger.error("[XL30] Failed to set X shift")
                 return False
 
         if yshift is not None:
             self._msg_tx(29, struct.pack("<f", yshift))
             res = self._msg_rx(fmt = 'i')
             if res['error']:
-                self._logger.error("Failed to set Y shift")
+                self._logger.error("[XL30] Failed to set Y shift")
                 return False
 
-        self._logger.info(f"Set X and Y shift to {xshift} and {yshift}")
+        self._logger.info(f"[XL30] Set X and Y shift to {xshift} and {yshift}")
         return True
 
     @onlyconnected()
@@ -1315,17 +1315,17 @@ class XL30Serial(XL30):
         self._msg_tx(22, fill = 4)
         res = self._msg_rx(fmt = 'f')
         if res['error']:
-            self._logger.error("Failed to query X area size")
+            self._logger.error("[XL30] Failed to query X area size")
             return None
         xsize = res['data'][0]
 
         self._msg_tx(24, fill = 4)
         if res['error']:
-            self._logger.error("Failed to query Y area size")
+            self._logger.error("[XL30] Failed to query Y area size")
             return None
         ysize = res['data'][0]
 
-        self._logger.debug(f"Queried selected area size: {xsize}%, {ysize}%")
+        self._logger.debug(f"[XL30] Queried selected area size: {xsize}%, {ysize}%")
         return (xsize, ysize)
 
     @onlyconnected()
@@ -1352,16 +1352,16 @@ class XL30Serial(XL30):
         self._msg_tx(23, struct.pack("<f", sizex))
         r = self._msg_rx(fmt = 'i')
         if r['error']:
-            self._logger.error("Failed to set selected area X")
+            self._logger.error("[XL30] Failed to set selected area X")
             return False
 
         self._msg_tx(25, struct.pack("<f", sizey))
         r = self._msg_rx(fmt = 'i')
         if r['error']:
-            self._logger.error("Failed to set selected area Y")
+            self._logger.error("[XL30] Failed to set selected area Y")
             return False
 
-        self._logger.info(f"Set selected area size to {sizex}, {sizey}")
+        self._logger.info(f"[XL30] Set selected area size to {sizex}, {sizey}")
         return True
         
 
@@ -1373,14 +1373,14 @@ class XL30Serial(XL30):
         self._msg_tx(74, fill = 4)
         res = self._msg_rx(fmt = 'i')
         if res['error']:
-            self._logger.error("Failed to query filter mode")
+            self._logger.error("[XL30] Failed to query filter mode")
             return None
 
         fmode = None
         try:
             fmode = ScanningElectronMicroscope_ImageFilterMode(res['data'][0])
         except:
-            self._logger.error(f"Unknown image filter mode {res['data'][0]} reported")
+            self._logger.error(f"[XL30] Unknown image filter mode {res['data'][0]} reported")
             return None
 
         return {
@@ -1408,9 +1408,9 @@ class XL30Serial(XL30):
         self._msg_tx(75, bytes([filtermode.value, int(math.log10(frames) / math.log10(2)), 0, 0]))
         rep = self._msg_rx(fmt = "i")
         if rep['error']:
-            self._logger.error(f"Failed to set filter mode {filtermode} with {frames} frames")
+            self._logger.error(f"[XL30] Failed to set filter mode {filtermode} with {frames} frames")
             return False
-        self._logger.info(f"New filtermode {filtermode} with {frames} frames")
+        self._logger.info(f"[XL30] New filtermode {filtermode} with {frames} frames")
         return True
 
     @untested()
@@ -1420,7 +1420,7 @@ class XL30Serial(XL30):
         self._msg_tx(58, fill = 4)
         rep = self._msg_rx(fmt = "i")
         if rep['error']:
-            self._logger.error(f"Failed to query speciment current detector mode")
+            self._logger.error(f"[XL30] Failed to query speciment current detector mode")
             return None
         mode = rep['data'][0]
 
@@ -1431,10 +1431,10 @@ class XL30Serial(XL30):
         }
 
         if mode in knownModes:
-            self._logger.debug(f"Queried speciment current detector mode {knownModes[mode]} (raw: {mode})")
+            self._logger.debug(f"[XL30] Queried speciment current detector mode {knownModes[mode]} (raw: {mode})")
             return knownModes[mode]
         else:
-            self._logger.error(f"Received unknown speciment current detector mode {mode}")
+            self._logger.error(f"[XL30] Received unknown speciment current detector mode {mode}")
             return None
 
     @buggy(bugs="Does not work on our XL30 ESEM")
@@ -1468,7 +1468,7 @@ class XL30Serial(XL30):
         self._msg_tx(60, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp["error"]:
-            self._logger.error(f"Failed to query speciment current (errorcode: {resp['errorcode']})")
+            self._logger.error(f"[XL30] Failed to query speciment current (errorcode: {resp['errorcode']})")
             return None
 
         return resp["data"][0]
@@ -1480,7 +1480,7 @@ class XL30Serial(XL30):
         self._msg_tx(62, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp["error"]:
-            self._logger.error(f"Failed to query beam blanking error code")
+            self._logger.error(f"[XL30] Failed to query beam blanking error code")
             return None
 
         if resp["data"][0] == 0:
@@ -1495,7 +1495,7 @@ class XL30Serial(XL30):
         self._msg_tx(63, bytes([1, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
         if resp["error"]:
-            self._logger.error("Failed to blank beam")
+            self._logger.error("[XL30] Failed to blank beam")
             return False
         return True
 
@@ -1506,7 +1506,7 @@ class XL30Serial(XL30):
         self._msg_tx(63, bytes([0, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
         if resp["error"]:
-            self._logger.error("Failed to unblank beam")
+            self._logger.error("[XL30] Failed to unblank beam")
             return False
         return True
 
@@ -1520,7 +1520,7 @@ class XL30Serial(XL30):
             self._msg_tx(39, bytes([0, 0, 0, 0]))
         resp = self._msg_rx(fmt = 'i')
         if resp["error"]:
-            self._logger.error("Failed to lock/unlock the system")
+            self._logger.error("[XL30] Failed to lock/unlock the system")
             return False
         return True
 
@@ -1531,7 +1531,7 @@ class XL30Serial(XL30):
         self._msg_tx(38, fill = 4)
         resp = self._msg_rx(fmt = 'i')
         if resp["error"]:
-            self._logger.error("Failed to query lock state")
+            self._logger.error("[XL30] Failed to query lock state")
             return None
 
         if resp["data"][0] == 0:
@@ -1541,68 +1541,3 @@ class XL30Serial(XL30):
 
 
 
-if __name__ == "__main__":
-    import sys
-    from time import sleep
-
-    logger = logging.getLogger()
-    logger.addHandler(logging.StreamHandler(sys.stdout))
-    logger.setLevel(logging.DEBUG)
-
-    with XL30Serial("/dev/ttyU0", logger, debug = True) as xl:
-        #sleep(60)
-        print(xl._get_id())
-
-        print(f"Currently blanked? {xl._is_beam_blanked()}")
-        sleep(1)
-        print("Blanking beam")
-        print(f"{xl._blank()}")
-        sleep(10)
-        print("Unblanking beam")
-        print(f"{xl._unblank()}")
-        
-
-        #print(xl._stage_home())
-
-        ##xl._set_hightension(10000)
-        ##sleep(30)
-        #xl._auto_contrastbrightness()
-        #xl._auto_focus()
-        #xl._write_tiff_image("C:\\XL\\USR\\SUPERVSR\\REM\\PYTST.TIF", overwrite = True)
-        #sleep(10)
-        ##xl._set_brightness(20)
-        #xl._set_hightension(0)
-
-        #print(xl._get_beamshift())
-        #xl._set_beamshift(1e-3, 2e-3)
-        #print(xl._get_beamshift())
-        #xl._set_beamshift(0,0)
-
-        ##import numpy as np
-        ##n = 0
-        ##for ixpos, xpos in enumerate(np.linspace(-3000e-3, 3000e-3, 7)):
-        ##    for iypos, ypos in enumerate(np.linspace(-1000e-3, 1000e-3, 100)):
-        ##        fname = f"C:\\XL\\USR\\SUPERVSR\\REM\\PYT{n}.TIF"
-        ##        xl._set_stage_position(x = xpos, y = ypos)
-        ##       sleep(0.5)
-        ##        xl._write_tiff_image(fname, overwrite = True)
-        ##        print(fname)
-        ##        n = n + 1
-
-        ##xl._set_hightension(0)
-
-        #xl._stage_home()
-        #xl._get_stage_position()
-        #xl._set_stage_position(x = 2, y = 2, z = 38)
-        #sleep(10)
-        #xl._set_stage_position(x = 0, y = 0, z = 39)
-        #sleep(10)
-        #xl._set_stage_position(x = -2, y = -2, z = 38)
-        #sleep(10)
-        #xl._set_stage_position(x = 0, y = 0, z = 39)
-        #xl._set_stage_position(x = 2, y = 2, z = 40, rot = 2, tilt = 2)
-        #sleep(10)
-        #xl._set_stage_position(x = 10, y = 10, z = 40, rot = 0, tilt = 0)
-        #sleep(10)
-        #xl._set_stage_position(x = 0, y = 0, z = 0, rot = 0, tilt = 0)
-        #xl._get_stage_position()
