@@ -88,21 +88,22 @@ class buggy:
         return wrapper
 
 class XL30(ScanningElectronMicroscope):
-    super().__init__(
-        highTension = (100, 30e3),
-        spotSize = (1, 10),
-        magnification = (10, 100000),
-        supportedScanModes = [
-            ScanningElectronMicroscope_ScanMode.FULL_FRAME,
-            ScanningElectronMicroscope_ScanMode.SELECTED_AREA,
-            ScanningElectronMicroscope_ScanMode.SPOT,
-            ScanningElectronMicroscope_ScanMode.LINE_X,
-            ScanningElectronMicroscope_ScanMode.LINE_Y,
-            ScanningElectronMicroscope_ScanMode.EXT_XY
-        ],
-        stigmatorCount = 1
-    )
-    pass
+    def __init__(self):
+        super().__init__(
+            highTension = (100, 30e3),
+            spotSize = (1, 10),
+            magnification = (10, 100000),
+            supportedScanModes = [
+                ScanningElectronMicroscope_ScanMode.FULL_FRAME,
+                ScanningElectronMicroscope_ScanMode.SELECTED_AREA,
+                ScanningElectronMicroscope_ScanMode.SPOT,
+                ScanningElectronMicroscope_ScanMode.LINE_X,
+                ScanningElectronMicroscope_ScanMode.LINE_Y,
+                ScanningElectronMicroscope_ScanMode.EXT_XY
+            ],
+            stigmatorCount = 1
+        )
+        pass
 
 class XL30Serial(XL30):
     def __init__(self, port, logger = None, debug = False, loglevel = "ERROR", detectorsAutodetect = False, retryCount = 3, reconnectCount = 3, retryDelay = 5, reconnectDelay = 5):
@@ -709,7 +710,7 @@ class XL30Serial(XL30):
     def _set_linetime(self, lt):
         supportedLts = {
             0 : 1.25,
-            1 : 1.87
+            1 : 1.87,
             2 : 3.43,
             3 : 6.86,
             4 : 20.0,
@@ -743,7 +744,7 @@ class XL30Serial(XL30):
     def _get_linetime(self):
         supportedLts = {
             0 : 1.25,
-            1 : 1.87
+            1 : 1.87,
             2 : 3.43,
             3 : 6.86,
             4 : 20.0,

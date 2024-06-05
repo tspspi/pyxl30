@@ -58,9 +58,9 @@ class ScanningElectronMicroscope:
 
         if not isinstance(supportedScanModes, list) and not isinstance(supportedScanModes, tuple):
             raise ValueError("Supported scan modes has to be a list or tuple")
-        if len(supportedScanMode) < 1:
+        if len(supportedScanModes) < 1:
             raise ValueError("At least one scan mode has to be supported")
-        for sm in supportedScanMode:
+        for sm in supportedScanModes:
             if not isinstance(sm, ScanningElectronMicroscope_ScanMode):
                 raise ValueError(f"Scan mode {sm} is not an ScanningElectronMicroscope_ScanMode")
 
