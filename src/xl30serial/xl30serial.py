@@ -41,7 +41,7 @@ class retrylooped:
                     # We have encountered an exception - if we retry we ignore it
                     args[0]._logger.error(f"[XL30] Encountered communicaiton error:\n{e}")
                     if args[0]._retryCountState > 0:
-                        args[0]._logger.warning("[XL30] Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
+                        args[0]._logger.warning(f"[XL30] Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
                         # We can simply retry ...
                         args[0]._retryCountState = args[0]._retryCountState - 1
                         sleep(args[0]._retryDelay)
@@ -49,7 +49,7 @@ class retrylooped:
                     else:
                         # We have to reconnect if we have reconnections available
                         if args[0]._reconnectCountState > 0:
-                            args[0]._logger.warning("[XL30] Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
+                            args[0]._logger.warning(f"[XL30] Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
                             args[0]._reconnect()
                             args[0]._reconnectCountState = args[0]._reconnectCountState - 1
                         else:
@@ -739,6 +739,7 @@ class XL30Serial(XL30):
         self._logger.info("[XL30] Set line time {lt} ms")
         return True
 
+    @tested()
     @onlyconnected()
     @retrylooped()
     def _get_linetime(self):
@@ -813,6 +814,7 @@ class XL30Serial(XL30):
             self._logger.info(f"[XL30] Set number of lines to {lines}")
             return True
 
+    @tested()
     @onlyconnected()
     @retrylooped()
     def _get_linesperframe(self):
