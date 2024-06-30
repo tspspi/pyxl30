@@ -514,6 +514,20 @@ class XL30Serial(XL30):
                 self._set_hightension(0)
                 return False
 
+            # Wait till ramp up ...
+            ht = 0
+            for wit in range(90*2):
+                sleep(0.5)
+                ht = self._get_hightension()
+                if abs(ht - voltage) < 100:
+                    break
+                self._logger.info(f"[XL30] Waiting for high tension to reach {voltage}V, currently at {ht}")
+
+            if abs(ht - voltage) > 100:
+                # If we raise an IOError we will trigger our retry loop that will use reconnect ...
+                self._logger.error(f"[XL30] Failed to set high tension in 90 seconds")
+                raise IOError("[XL30] Failed to set high tension in 90 seconds")
+
             return True
         else:
             self._logger.info("[XL30] Disabling high tension")
