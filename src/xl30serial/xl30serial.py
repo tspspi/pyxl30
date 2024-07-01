@@ -525,7 +525,7 @@ class XL30Serial(XL30):
 
             if abs(ht - voltage) > 100:
                 # If we raise an IOError we will trigger our retry loop that will use reconnect ...
-                self._logger.error(f"[XL30] Failed to set high tension in 90 seconds")
+                self._logger.error("[XL30] Failed to set high tension in 90 seconds")
                 raise IOError("[XL30] Failed to set high tension in 90 seconds")
 
             return True
@@ -609,7 +609,7 @@ class XL30Serial(XL30):
         self._msg_tx(12, fill = 4)
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to query magnification")
+            self._logger.error("[XL30] Failed to query magnification")
             return False
         self._logger.info(f"[XL30] Queried magnification {resp['data'][0]}")
         return resp['data'][0]
@@ -624,7 +624,7 @@ class XL30Serial(XL30):
         self._msg_tx(13, struct.pack("<f", magnification))
         resp = self._msg_rx(fmt = "f")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to set magnification")
+            self._logger.error("[XL30] Failed to set magnification")
             return False
 
         self._logger.info(f"[XL30] New magnification {magnification}")
@@ -640,7 +640,7 @@ class XL30Serial(XL30):
         self._msg_tx(70, fill = 8)
         resp = self._msg_rx(fmt = "ff")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to read stigmator setting")
+            self._logger.error("[XL30] Failed to read stigmator setting")
             return None, None
 
         return (resp['data'][0], resp['data'][1])
@@ -775,7 +775,7 @@ class XL30Serial(XL30):
         self._msg_tx(21, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to query line time from XL30")
+            self._logger.error("[XL30] Failed to query line time from XL30")
             return None
         v = resp['data'][0]
 
@@ -852,7 +852,7 @@ class XL30Serial(XL30):
         self._msg_tx(18, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to query number of lines per frame")
+            self._logger.error("[XL30] Failed to query number of lines per frame")
             return None
         v = resp['data'][0]
 
@@ -886,7 +886,7 @@ class XL30Serial(XL30):
         self._msg_tx(16, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp['error']:
-            self._logger.error(f"[XL30] Failed to query scan mode")
+            self._logger.error("[XL30] Failed to query scan mode")
             return None
 
         v = resp['data'][0]
@@ -1438,7 +1438,7 @@ class XL30Serial(XL30):
         self._msg_tx(58, fill = 4)
         rep = self._msg_rx(fmt = "i")
         if rep['error']:
-            self._logger.error(f"[XL30] Failed to query speciment current detector mode")
+            self._logger.error("[XL30] Failed to query speciment current detector mode")
             return None
         mode = rep['data'][0]
 
@@ -1475,7 +1475,9 @@ class XL30Serial(XL30):
 
         self._msg_tx(59, bytes([md, 0, 0, 0]))
         resp = self._msg_rx(fmt = "i")
-
+        if resp["error"]:
+            self._logger.error("[XL30] Failed to blank beam")
+            return False
         return True
 
     @buggy(bugs="Does not work on our XL30 ESEM")
@@ -1498,7 +1500,7 @@ class XL30Serial(XL30):
         self._msg_tx(62, fill = 4)
         resp = self._msg_rx(fmt = "i")
         if resp["error"]:
-            self._logger.error(f"[XL30] Failed to query beam blanking error code")
+            self._logger.error("[XL30] Failed to query beam blanking error code")
             return None
 
         if resp["data"][0] == 0:
