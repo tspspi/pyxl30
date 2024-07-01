@@ -231,7 +231,7 @@ class ScanningElectronMicroscope:
 
 
     # Exposed methods (public API)
-    def get_id():
+    def get_id(self):
         return self._get_id()
 
     def get_hightension(self):
