@@ -39,7 +39,7 @@ class retrylooped:
                     return retValue
                 except Exception as e:
                     # We have encountered an exception - if we retry we ignore it
-                    args[0]._logger.error(f"[XL30] Encountered communicaiton error:\n{e}")
+                    args[0]._logger.error(f"[XL30] Encountered communication error:\n{e}")
                     if retryCountState > 0:
                         args[0]._logger.warning(f"[XL30] Retrying request (retry {args[0]._retryCount - retryCountState + 1}/{args[0]._retryCount})")
                         # We can simply retry ...
