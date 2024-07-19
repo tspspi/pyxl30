@@ -30,8 +30,8 @@ class retrylooped:
         pass
     def __call__(self, func):
         def wrapper(*args, **kwargs):
-            args[0]._retryCountState = args[0]._retryCount
-            args[0]._reconnectCountState = args[0]._reconnectCount
+            retryCountState = args[0]._retryCount
+            reconnectCountState = args[0]._reconnectCount
 
             while True:
                 try:
@@ -40,18 +40,18 @@ class retrylooped:
                 except Exception as e:
                     # We have encountered an exception - if we retry we ignore it
                     args[0]._logger.error(f"[XL30] Encountered communicaiton error:\n{e}")
-                    if args[0]._retryCountState > 0:
-                        args[0]._logger.warning(f"[XL30] Retrying request (retry {args[0]._retryCount - args[0]._retryCountState + 1}/{args[0]._retryCount})")
+                    if retryCountState > 0:
+                        args[0]._logger.warning(f"[XL30] Retrying request (retry {args[0]._retryCount - retryCountState + 1}/{args[0]._retryCount})")
                         # We can simply retry ...
-                        args[0]._retryCountState = args[0]._retryCountState - 1
+                        retryCountState = retryCountState - 1
                         sleep(args[0]._retryDelay)
                         continue
                     else:
                         # We have to reconnect if we have reconnections available
-                        if args[0]._reconnectCountState > 0:
-                            args[0]._logger.warning(f"[XL30] Reconnect to XL30 (attempt {args[0]._reconnectCount - args[0]._reconnectCountState + 1}/{args[0]._reconnectCount})")
+                        if reconnectCountState > 0:
+                            args[0]._logger.warning(f"[XL30] Reconnect to XL30 (attempt {args[0]._reconnectCount - reconnectCountState + 1}/{args[0]._reconnectCount})")
                             args[0]._reconnect()
-                            args[0]._reconnectCountState = args[0]._reconnectCountState - 1
+                            reconnectCountState = reconnectCountState - 1
                         else:
                             self._logger.error(f"[XL30] {args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
                             raise
