@@ -8,6 +8,7 @@ import serial
 import logging
 import struct
 import math
+import signal
 
 from time import sleep
 
@@ -53,9 +54,26 @@ class retrylooped:
                             args[0]._reconnect()
                             reconnectCountState = reconnectCountState - 1
                         else:
-                            self._logger.error(f"[XL30] {args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
+                            args[0]._logger.error(f"[XL30] {args[0]._reconnectCount} reconnection attempts with {args[0]._retryCount} retries each exceeded")
                             raise
         return wrapper
+
+class PreventKeyboardInterrupt:
+    def __init__(self):
+        self._received_signal = None
+        self._old_handler = None
+
+    def _wrap_handler(self, sig, ctx):
+        self._received_signal = (sig, ctx)
+
+    def __enter__(self):
+        self._received_signal = None
+        self._old_handler = signal.signal(signal.SIGINT, self._wrap_handler)
+
+    def __exit__(self, type, value, exc):
+        signal.signal(signal.SIGINT, self._old_handler)
+        if self._received_signal is not None:
+            self._old_handler(*self._received_signal)
 
 
 class tested:
@@ -309,7 +327,9 @@ class XL30Serial(XL30):
 
         # Transmit message
         self._logger.debug(f"[XL30] TX: {msg}")
-        self._port.write(msg)
+
+        with PreventKeyboardInterrupt():
+            self._port.write(msg)
 
         return True
 
@@ -318,32 +338,33 @@ class XL30Serial(XL30):
         self,
         fmt = None
     ):
-        msg = self._port.read(2)
-        if msg == b'':
-            # Timeout indicates no message has been received
-            self._logger.warning("[XL30] Timeout during RX")
-            return None
+        with PreventKeyboardInterrupt():
+            msg = self._port.read(2)
+            if msg == b'':
+                # Timeout indicates no message has been received
+                self._logger.warning("[XL30] Timeout during RX")
+                return None
 
-        if len(msg) != 2:
-            # Communication error, not enough bytes received in one timeout - no valid message received
-            self._logger.warning("[XL30] Incomplete message during RX")
-            return None
+            if len(msg) != 2:
+                # Communication error, not enough bytes received in one timeout - no valid message received
+                self._logger.warning("[XL30] Incomplete message during RX")
+                return None
 
-        if msg[0] != 0x05:
-            self._logger.error(f"[XL30] Invalid message response. Expecting ID 0x05, got {msg[0]}")
-            raise ScanningElectronMicroscope_CommunicationError("Invalid message response")
+            if msg[0] != 0x05:
+                self._logger.error(f"[XL30] Invalid message response. Expecting ID 0x05, got {msg[0]}")
+                raise ScanningElectronMicroscope_CommunicationError("Invalid message response")
 
-        msgLen = msg[1]
-        toRead = msgLen - 2
+            msgLen = msg[1]
+            toRead = msgLen - 2
 
-        while toRead > 0:
-            b = self._port.read(1)
-            if b == b'':
-                # Timeout - no valid message received
-                self._logger.error(f"[XL30] Invalid message response. Partial message: {msg}")
-                raise ScanningElectronMicroscope_CommunicationError("Invalid message response: Timeout, partial message")
-            toRead = toRead - 1
-            msg += b
+            while toRead > 0:
+                b = self._port.read(1)
+                if b == b'':
+                    # Timeout - no valid message received
+                    self._logger.error(f"[XL30] Invalid message response. Partial message: {msg}")
+                    raise ScanningElectronMicroscope_CommunicationError("Invalid message response: Timeout, partial message")
+                toRead = toRead - 1
+                msg += b
 
         # Checksum verification
         chksum = 0
